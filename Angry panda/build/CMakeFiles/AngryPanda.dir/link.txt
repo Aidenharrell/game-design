@@ -1,0 +1,1 @@
+/usr/bin/c++ CMakeFiles/AngryPanda.dir/src/main.cpp.o CMakeFiles/AngryPanda.dir/src/game.cpp.o CMakeFiles/AngryPanda.dir/src/input.cpp.o CMakeFiles/AngryPanda.dir/src/player.cpp.o -o AngryPanda  /usr/lib/x86_64-linux-gnu/libSDL2.so /usr/lib/x86_64-linux-gnu/libSDL2main.a 

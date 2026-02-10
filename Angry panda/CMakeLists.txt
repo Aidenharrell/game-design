@@ -4,10 +4,23 @@ project(AngryPanda LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# SDL2 configuration: expects SDL2 to be installed and discoverable by CMake
-# If using vcpkg, set CMAKE_TOOLCHAIN_FILE accordingly when configuring.
-find_package(SDL2 CONFIG REQUIRED)
+# -------------------------------
+# Platform-specific SDL2 setup
+# -------------------------------
+if(WIN32)
+    # On Windows, assume vcpkg is used
+    if(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
+        message(FATAL_ERROR "Please configure CMAKE_TOOLCHAIN_FILE to point to vcpkg.cmake")
+    endif()
+    find_package(SDL2 CONFIG REQUIRED)
+else()
+    # On Linux / WSL, use system-installed SDL2
+    find_package(SDL2 REQUIRED)
+endif()
 
+# -------------------------------
+# Executable
+# -------------------------------
 add_executable(AngryPanda
     src/main.cpp
     src/game.cpp
