@@ -2,9 +2,30 @@
 #include <algorithm>
 #include <iostream>
 #include <string>
+#include <vector>
 
 static const int kWindowWidth = 960;
 static const int kWindowHeight = 540;
+
+static SDL_Texture* LoadTextureBMP(SDL_Renderer* renderer, const std::vector<std::string>& paths, int* out_w, int* out_h) {
+    for (const std::string& path : paths) {
+        SDL_Surface* bmp = SDL_LoadBMP(path.c_str());
+        if (!bmp) {
+            continue;
+        }
+
+        SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, bmp);
+        if (texture && out_w && out_h) {
+            *out_w = bmp->w;
+            *out_h = bmp->h;
+        }
+        SDL_FreeSurface(bmp);
+        if (texture) {
+            return texture;
+        }
+    }
+    return nullptr;
+}
 
 bool Game::Init() {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS) != 0) {
@@ -29,25 +50,48 @@ bool Game::Init() {
         return false;
     }
 
-    SDL_Surface* bmp = SDL_LoadBMP("src/Opanda.bmp");
-    if (!bmp) {
-        char* base = SDL_GetBasePath();
-        if (base) {
-            std::string path = std::string(base) + "..\\..\\src\\Opanda.bmp";
-            bmp = SDL_LoadBMP(path.c_str());
-            SDL_free(base);
+    player_texture_ = LoadTextureBMP(
+        renderer_,
+        {
+            "src/Opanda.bmp",
+            "..\\..\\src\\Opanda.bmp",
+            "C:\\Users\\aiden\\game-design\\src\\Opanda.bmp"
+        },
+        &player_tex_w_,
+        &player_tex_h_
+    );
+
+    if (player_texture_) {
+        player_.SetTexture(player_texture_, player_tex_w_, player_tex_h_);
+    } else {
+        std::cerr << "Failed to load Opanda.bmp\n";
+    }
+
+    int idle_w = player_tex_w_;
+    int idle_h = player_tex_h_;
+    for (int i = 0; i < 8; ++i) {
+        const std::string filename = "idel" + std::to_string(i) + ".bmp";
+        SDL_Texture* frame = LoadTextureBMP(
+            renderer_,
+            {
+                "src/panda idel/" + filename,
+                "..\\..\\src\\panda idel\\" + filename,
+                "..\\..\\..\\OneDrive\\Desktop\\pixelart\\panda idel\\" + filename,
+                "C:\\Users\\aiden\\OneDrive\\Desktop\\pixelart\\panda idel\\" + filename
+            },
+            &idle_w,
+            &idle_h
+        );
+        if (frame) {
+            idle_textures_.push_back(frame);
         }
     }
-    if (bmp) {
-        player_texture_ = SDL_CreateTextureFromSurface(renderer_, bmp);
-        player_tex_w_ = bmp->w;
-        player_tex_h_ = bmp->h;
-        SDL_FreeSurface(bmp);
-        if (player_texture_) {
-            player_.SetTexture(player_texture_, player_tex_w_, player_tex_h_);
-        }
+
+    if (!idle_textures_.empty()) {
+        player_.SetIdleTextures(idle_textures_, idle_w, idle_h);
+        std::cout << "Loaded idle frames: " << idle_textures_.size() << "\n";
     } else {
-        std::cerr << "Failed to load Opanda.bmp: " << SDL_GetError() << "\n";
+        std::cerr << "No idle frames found in panda idel folder\n";
     }
 
     player_.SetGroundY(kWindowHeight - 80.0f);
@@ -74,6 +118,13 @@ void Game::Run() {
 }
 
 void Game::Shutdown() {
+    for (SDL_Texture* tex : idle_textures_) {
+        if (tex) {
+            SDL_DestroyTexture(tex);
+        }
+    }
+    idle_textures_.clear();
+
     if (player_texture_) {
         SDL_DestroyTexture(player_texture_);
         player_texture_ = nullptr;
@@ -112,12 +163,10 @@ void Game::Render() {
     SDL_SetRenderDrawColor(renderer_, 25, 25, 30, 255);
     SDL_RenderClear(renderer_);
 
-    // Ground
     SDL_SetRenderDrawColor(renderer_, 60, 60, 70, 255);
     SDL_Rect ground{0, kWindowHeight - 40, kWindowWidth, 40};
     SDL_RenderFillRect(renderer_, &ground);
 
-    // Player
     player_.Render(renderer_);
 
     SDL_RenderPresent(renderer_);
