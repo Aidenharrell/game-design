@@ -27,6 +27,7 @@ static SDL_Texture* LoadTextureBMP(SDL_Renderer* renderer, const std::vector<std
     return nullptr;
 }
 
+
 bool Game::Init() {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS) != 0) {
         std::cerr << "SDL_Init failed: " << SDL_GetError() << "\n";
@@ -69,7 +70,7 @@ bool Game::Init() {
 
     int idle_w = player_tex_w_;
     int idle_h = player_tex_h_;
-    for (int i = 0; i < 8; ++i) {
+    for (int i = 0; i <= 8; ++i) {
         const std::string filename = "idel" + std::to_string(i) + ".bmp";
         SDL_Texture* frame = LoadTextureBMP(
             renderer_,
@@ -87,6 +88,37 @@ bool Game::Init() {
         }
     }
 
+    int walk_w = player_tex_w_;
+    int walk_h = player_tex_h_;
+    for (int i = 1; i <= 10; ++i) {
+        const std::string filename = "walk" + std::to_string(i) + ".bmp";
+        SDL_Texture* frame = LoadTextureBMP(
+            renderer_,
+            {
+                "src/walk/" + filename,
+                "src/panda walk/" + filename,
+                "..\\..\\src\\walk\\" + filename,
+                "..\\..\\src\\panda walk\\" + filename,
+                "..\\..\\..\\OneDrive\\Desktop\\pixelart\\walk\\" + filename,
+                "..\\..\\..\\OneDrive\\Desktop\\pixelart\\panda walk\\" + filename,
+                "C:\\Users\\aiden\\OneDrive\\Desktop\\pixelart\\walk\\" + filename,
+                "C:\\Users\\aiden\\OneDrive\\Desktop\\pixelart\\panda walk\\" + filename
+            },
+            &walk_w,
+            &walk_h
+        );
+        if (frame) {
+            walk_textures_.push_back(frame);
+        }
+    }
+
+    if (!walk_textures_.empty()) {
+        player_.SetWalkTextures(walk_textures_, walk_w, walk_h);
+        std::cout << "Loaded walk frames: " << walk_textures_.size() << "\n";
+    } else {
+        std::cerr << "No walk frames found in panda walk folder\n";
+    }
+
     if (!idle_textures_.empty()) {
         player_.SetIdleTextures(idle_textures_, idle_w, idle_h);
         std::cout << "Loaded idle frames: " << idle_textures_.size() << "\n";
@@ -99,7 +131,7 @@ bool Game::Init() {
 
     running_ = true;
     return true;
-}
+    }
 
 void Game::Run() {
     Uint64 now = SDL_GetPerformanceCounter();
@@ -124,6 +156,13 @@ void Game::Shutdown() {
         }
     }
     idle_textures_.clear();
+
+    for (SDL_Texture* tex : walk_textures_) {
+        if (tex) {
+            SDL_DestroyTexture(tex);
+        }
+    }
+    walk_textures_.clear();
 
     if (player_texture_) {
         SDL_DestroyTexture(player_texture_);

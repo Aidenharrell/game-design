@@ -7,8 +7,9 @@ class Player {
 public:
     void SetPosition(float x, float y) { x_ = x; y_ = y; }
     void SetGroundY(float y) { ground_y_ = y; }
-    void SetTexture(SDL_Texture* texture, int w, int h) { texture_ = texture; tex_w_ = w; tex_h_ = h; }
+    void SetTexture(SDL_Texture* texture, int w, int h);
     void SetIdleTextures(const std::vector<SDL_Texture*>& textures, int w, int h);
+    void SetWalkTextures(const std::vector<SDL_Texture*>& textures, int w, int h);
 
     void Update(float dt, const InputState& input);
     void Render(SDL_Renderer* renderer) const;
@@ -25,12 +26,22 @@ private:
     float punch_timer_ = 0.0f;
 
     SDL_Texture* texture_ = nullptr;
-    int tex_w_ = 0;
-    int tex_h_ = 0;
+    int base_tex_w_ = 0;
+    int base_tex_h_ = 0;
 
     std::vector<SDL_Texture*> idle_textures_{};
+    int idle_tex_w_ = 0;
+    int idle_tex_h_ = 0;
     int idle_frame_ = 0;
     float idle_frame_time_ = 0.0f;
     bool idle_active_ = false;
+
+    std::vector<SDL_Texture*> walk_textures_{};
+    int walk_tex_w_ = 0;
+    int walk_tex_h_ = 0;
+    int walk_frame_ = 0;
+    float walk_frame_time_ = 0.0f;
+    bool walk_active_ = false;
+
     bool facing_left_ = false;
 };
