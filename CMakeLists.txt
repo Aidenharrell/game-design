@@ -14,6 +14,11 @@ add_executable(AngryPanda
     src/input.cpp
     src/player.cpp
 )
+file(GLOB_RECURSE GAME_ASSETS
+     "${CMAKE_SOURCE_DIR}/assets/*")
+
+file(COPY ${GAME_ASSETS}
+     DESTINATION ${CMAKE_BINARY_DIR}/assets)
 
 target_include_directories(AngryPanda PRIVATE src)
 target_link_libraries(AngryPanda PRIVATE SDL2::SDL2 SDL2::SDL2main)
