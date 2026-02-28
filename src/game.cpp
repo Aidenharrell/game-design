@@ -1,5 +1,6 @@
 #include "game.hpp"
 #include <algorithm>
+#include <cctype>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -33,6 +34,72 @@ static SDL_Texture* LoadTextureBMP(SDL_Renderer* renderer, const fs::path& path,
     return texture;
 }
 
+static fs::path ResolveAssetsDir() {
+    fs::path exe_dir = fs::current_path();
+    if (char* base = SDL_GetBasePath()) {
+        exe_dir = fs::path(base);
+        SDL_free(base);
+    }
+
+    const std::vector<fs::path> candidates = {
+        exe_dir / "assets",
+        exe_dir / ".." / "assets",
+        fs::current_path() / "assets",
+        fs::current_path() / ".." / "assets"
+    };
+
+    for (const fs::path& path : candidates) {
+        if (fs::exists(path) && fs::is_directory(path)) {
+            return path;
+        }
+    }
+    return candidates[0];
+}
+
+static std::vector<fs::path> CollectFramesByPrefix(const fs::path& dir, const std::string& prefix) {
+    std::vector<fs::path> frames;
+    if (!fs::exists(dir) || !fs::is_directory(dir)) {
+        return frames;
+    }
+
+    for (const fs::directory_entry& entry : fs::directory_iterator(dir)) {
+        if (!entry.is_regular_file()) continue;
+
+        const fs::path path = entry.path();
+        std::string stem = path.stem().string();
+        std::string ext = path.extension().string();
+        std::transform(stem.begin(), stem.end(), stem.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        std::transform(ext.begin(), ext.end(), ext.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+        if (ext == ".bmp" && stem.rfind(prefix, 0) == 0) {
+            frames.push_back(path);
+        }
+    }
+
+    auto frame_index = [&](const fs::path& p) -> int {
+        const std::string stem = p.stem().string();
+        std::size_t i = prefix.size();
+        int value = 0;
+        bool has_digits = false;
+        while (i < stem.size() && std::isdigit(static_cast<unsigned char>(stem[i]))) {
+            has_digits = true;
+            value = (value * 10) + (stem[i] - '0');
+            ++i;
+        }
+        return has_digits ? value : -1;
+    };
+
+    std::sort(frames.begin(), frames.end(), [&](const fs::path& a, const fs::path& b) {
+        const int ai = frame_index(a);
+        const int bi = frame_index(b);
+        if (ai != bi) return ai < bi;
+        return a.filename().string() < b.filename().string();
+    });
+    return frames;
+}
+
 bool Game::Init() {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS) != 0) {
         std::cerr << "SDL_Init failed: " << SDL_GetError() << "\n";
@@ -54,11 +121,10 @@ bool Game::Init() {
         return false;
     }
 
-    // Determine the executable folder (build/)
-    fs::path exe_dir = fs::current_path();
+    fs::path assets_dir = ResolveAssetsDir();
 
     // Load player base texture
-    fs::path player_path = exe_dir / ".." / "assets" / "Opanda.bmp";
+    fs::path player_path = assets_dir / "Opanda.bmp";
     player_texture_ = LoadTextureBMP(renderer_, player_path, &player_tex_w_, &player_tex_h_);
     if (!player_texture_) {
         std::cerr << "Failed to load " << player_path << "\n";
@@ -66,24 +132,61 @@ bool Game::Init() {
         player_.SetTexture(player_texture_, player_tex_w_, player_tex_h_);
     }
 
-    // Load idle frames (idel0.bmp → idel8.bmp)
+    // Load idle frames by filename prefix (idle*.bmp or idel*.bmp)
     int idle_w = player_tex_w_;
     int idle_h = player_tex_h_;
-    fs::path idle_dir = exe_dir / ".." / "assets" / "idel";
-    for (int i = 0; i <= 8; ++i) {
-        fs::path frame_path = idle_dir / ("idel" + std::to_string(i) + ".bmp");
+    fs::path idle_dir = assets_dir / "idel";
+    std::vector<fs::path> idle_frames = CollectFramesByPrefix(idle_dir, "idle");
+    if (idle_frames.empty()) {
+        idle_frames = CollectFramesByPrefix(idle_dir, "idel");
+    }
+    if (idle_frames.empty()) {
+        idle_frames = CollectFramesByPrefix(assets_dir, "idle");
+    }
+    if (idle_frames.empty()) {
+        idle_frames = CollectFramesByPrefix(assets_dir, "idel");
+    }
+    for (const fs::path& frame_path : idle_frames) {
         SDL_Texture* frame = LoadTextureBMP(renderer_, frame_path, &idle_w, &idle_h);
         if (frame) idle_textures_.push_back(frame);
     }
 
-    // Load walk frames (walk1.bmp → walk10.bmp)
+    // Load walk frames from either walk*.bmp or rewalk*.bmp
     int walk_w = player_tex_w_;
     int walk_h = player_tex_h_;
-    fs::path walk_dir = exe_dir / ".." / "assets" / "walk";
-    for (int i = 1; i <= 10; ++i) {
-        fs::path frame_path = walk_dir / ("walk" + std::to_string(i) + ".bmp");
+    fs::path walk_dir = assets_dir / "walk";
+    std::vector<fs::path> walk_frames = CollectFramesByPrefix(walk_dir, "walk");
+    if (walk_frames.empty()) {
+        walk_frames = CollectFramesByPrefix(walk_dir, "rewalk");
+    }
+    if (walk_frames.empty()) {
+        walk_frames = CollectFramesByPrefix(assets_dir, "walk");
+    }
+    if (walk_frames.empty()) {
+        walk_frames = CollectFramesByPrefix(assets_dir, "rewalk");
+    }
+    for (const fs::path& frame_path : walk_frames) {
         SDL_Texture* frame = LoadTextureBMP(renderer_, frame_path, &walk_w, &walk_h);
         if (frame) walk_textures_.push_back(frame);
+    }
+
+    // Load punch frames from either punch*.bmp or repunch*.bmp
+    int punch_w = player_tex_w_;
+    int punch_h = player_tex_h_;
+    fs::path punch_dir = assets_dir / "punch";
+    std::vector<fs::path> punch_frames = CollectFramesByPrefix(punch_dir, "punch");
+    if (punch_frames.empty()) {
+        punch_frames = CollectFramesByPrefix(punch_dir, "repunch");
+    }
+    if (punch_frames.empty()) {
+        punch_frames = CollectFramesByPrefix(assets_dir, "punch");
+    }
+    if (punch_frames.empty()) {
+        punch_frames = CollectFramesByPrefix(assets_dir, "repunch");
+    }
+    for (const fs::path& frame_path : punch_frames) {
+        SDL_Texture* frame = LoadTextureBMP(renderer_, frame_path, &punch_w, &punch_h);
+        if (frame) punch_textures_.push_back(frame);
     }
 
     if (!idle_textures_.empty()) {
@@ -98,6 +201,12 @@ bool Game::Init() {
         std::cout << "Loaded walk frames: " << walk_textures_.size() << "\n";
     } else {
         std::cerr << "No walk frames found in " << walk_dir << "\n";
+    }
+    if (!punch_textures_.empty()) {
+        player_.SetPunchTextures(punch_textures_, punch_w, punch_h);
+        std::cout << "Loaded punch frames: " << punch_textures_.size() << "\n";
+    } else {
+        std::cerr << "No punch frames found in " << punch_dir << "\n";
     }
 
     player_.SetGroundY(kWindowHeight - 80.0f);
@@ -173,6 +282,11 @@ void Game::Shutdown() {
         if (tex) SDL_DestroyTexture(tex);
     }
     walk_textures_.clear();
+    // Destroy punch textures
+    for (SDL_Texture* tex : punch_textures_) {
+        if (tex) SDL_DestroyTexture(tex);
+    }
+    punch_textures_.clear();
 
     // Destroy player base texture
     if (player_texture_) {

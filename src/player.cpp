@@ -8,6 +8,7 @@ static const float kGravity = 1400.0f;
 static const float kPunchDuration = 0.18f;
 static const float kIdleFrameDuration = 0.12f;
 static const float kWalkFrameDuration = 0.10f;
+static const float kPunchFrameDuration = 0.06f;
 
 void Player::SetTexture(SDL_Texture* texture, int w, int h) {
     texture_ = texture;
@@ -31,6 +32,14 @@ void Player::SetWalkTextures(const std::vector<SDL_Texture*>& textures, int w, i
     walk_frame_time_ = 0.0f;
 }
 
+void Player::SetPunchTextures(const std::vector<SDL_Texture*>& textures, int w, int h) {
+    punch_textures_ = textures;
+    punch_tex_w_ = w;
+    punch_tex_h_ = h;
+    punch_frame_ = 0;
+    punch_frame_time_ = 0.0f;
+}
+
 void Player::Update(float dt, const InputState& input) {
     float move = 0.0f;
     if (input.move_left) move -= 1.0f;
@@ -50,6 +59,8 @@ void Player::Update(float dt, const InputState& input) {
 
     if (input.punch_pressed) {
         punch_timer_ = kPunchDuration;
+        punch_frame_ = 0;
+        punch_frame_time_ = 0.0f;
     }
 
     vy_ += kGravity * dt;
@@ -66,8 +77,17 @@ void Player::Update(float dt, const InputState& input) {
         punch_timer_ -= dt;
         if (punch_timer_ < 0.0f) punch_timer_ = 0.0f;
     }
+    if (punch_timer_ > 0.0f && !punch_textures_.empty()) {
+        punch_frame_time_ += dt;
+        if (punch_frame_time_ >= kPunchFrameDuration) {
+            punch_frame_time_ = 0.0f;
+            if (punch_frame_ + 1 < static_cast<int>(punch_textures_.size())) {
+                ++punch_frame_;
+            }
+        }
+    }
 
-    walk_active_ = on_ground_ && std::fabs(vx_) >= 0.01f && punch_timer_ <= 0.0f;
+    walk_active_ = on_ground_ && std::fabs(vx_) >= 0.01f;
     if (walk_active_ && !walk_textures_.empty()) {
         walk_frame_time_ += dt;
         if (walk_frame_time_ >= kWalkFrameDuration) {
@@ -79,7 +99,7 @@ void Player::Update(float dt, const InputState& input) {
         walk_frame_time_ = 0.0f;
     }
 
-    idle_active_ = on_ground_ && std::fabs(vx_) < 0.01f && punch_timer_ <= 0.0f;
+    idle_active_ = on_ground_ && std::fabs(vx_) < 0.01f;
     if (idle_active_ && !idle_textures_.empty()) {
         idle_frame_time_ += dt;
         if (idle_frame_time_ >= kIdleFrameDuration) {
@@ -99,7 +119,11 @@ void Player::Render(SDL_Renderer* renderer) const {
     if (draw_h <= 0) draw_h = 64;
 
     SDL_Texture* render_texture = texture_;
-    if (walk_active_ && !walk_textures_.empty()) {
+    if (punch_timer_ > 0.0f && !punch_textures_.empty()) {
+        render_texture = punch_textures_[punch_frame_];
+        draw_w = punch_tex_w_;
+        draw_h = punch_tex_h_;
+    } else if (walk_active_ && !walk_textures_.empty()) {
         render_texture = walk_textures_[walk_frame_];
         draw_w = walk_tex_w_;
         draw_h = walk_tex_h_;
@@ -117,13 +141,5 @@ void Player::Render(SDL_Renderer* renderer) const {
     } else {
         SDL_SetRenderDrawColor(renderer, 220, 220, 220, 255);
         SDL_RenderFillRect(renderer, &body);
-    }
-
-    if (punch_timer_ > 0.0f) {
-        SDL_Rect fist = facing_left_
-            ? SDL_Rect{body.x - 20, body.y + 24, 20, 12}
-            : SDL_Rect{body.x + body.w, body.y + 24, 20, 12};
-        SDL_SetRenderDrawColor(renderer, 255, 140, 90, 255);
-        SDL_RenderFillRect(renderer, &fist);
     }
 }
