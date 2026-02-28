@@ -1,3 +1,0 @@
-/home/dev/workspace/projects/Game_Design/game-design/Angry panda/build/CMakeFiles/AngryPanda.dir
-/home/dev/workspace/projects/Game_Design/game-design/Angry panda/build/CMakeFiles/edit_cache.dir
-/home/dev/workspace/projects/Game_Design/game-design/Angry panda/build/CMakeFiles/rebuild_cache.dir
