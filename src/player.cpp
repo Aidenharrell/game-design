@@ -1,4 +1,5 @@
 #include "player.hpp"
+#include "game.hpp"
 #include <algorithm>
 #include <cmath>
 
@@ -38,6 +39,32 @@ void Player::SetPunchTextures(const std::vector<SDL_Texture*>& textures, int w, 
     punch_tex_h_ = h;
     punch_frame_ = 0;
     punch_frame_time_ = 0.0f;
+}
+void Player::CheckPlatformCollisions(const std::vector<Platform>& platforms) {
+    on_ground_ = false;
+
+    SDL_Rect playerRect{
+        static_cast<int>(x_),
+        static_cast<int>(y_) - base_tex_h_,
+        base_tex_w_,
+        base_tex_h_
+    };
+
+    for (const auto& platform : platforms) {
+        SDL_Rect p = platform.rect;
+
+        // Check if falling and hitting top of platform
+        if (vy_ >= 0 &&
+            playerRect.y + playerRect.h <= p.y + 10 && // was above platform
+            playerRect.y + playerRect.h >= p.y &&      // now touching
+            playerRect.x + playerRect.w > p.x &&
+            playerRect.x < p.x + p.w) {
+
+            y_ = static_cast<float>(p.y);
+            vy_ = 0.0f;
+            on_ground_ = true;
+        }
+    }
 }
 
 void Player::Update(float dt, const InputState& input) {

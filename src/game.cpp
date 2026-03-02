@@ -1,4 +1,5 @@
 #include "game.hpp"
+#include "platform.hpp"
 #include <algorithm>
 #include <cctype>
 #include <iostream>
@@ -209,8 +210,15 @@ bool Game::Init() {
         std::cerr << "No punch frames found in " << punch_dir << "\n";
     }
 
-    player_.SetGroundY(kWindowHeight - 80.0f);
+    player_.SetGroundY(kWindowHeight - 40.0f);
     player_.SetPosition(120.0f, kWindowHeight - 80.0f);
+
+    //platforms
+    platforms_.push_back({ SDL_Rect{0, kWindowHeight - 40, kWindowWidth, 40} });  // ground
+
+    platforms_.push_back({ SDL_Rect{300, 400, 200, 20} });
+    platforms_.push_back({ SDL_Rect{600, 300, 180, 20} });
+    platforms_.push_back({ SDL_Rect{300, 250, 150, 20} });
 
     running_ = true;
     return true;
@@ -251,8 +259,8 @@ void Game::HandleEvents() {
 // Update player and game state
 void Game::Update(float dt) {
     player_.Update(dt, input_);
+    player_.CheckPlatformCollisions(platforms_);
 }
-
 // Render everything
 void Game::Render() {
     // Clear screen
@@ -263,6 +271,13 @@ void Game::Render() {
     SDL_SetRenderDrawColor(renderer_, 60, 60, 70, 255);
     SDL_Rect ground{0, kWindowHeight - 40, kWindowWidth, 40};
     SDL_RenderFillRect(renderer_, &ground);
+
+    //Draw platforms
+    SDL_SetRenderDrawColor(renderer_, 100, 100, 120, 255);
+
+    for (const auto& platform : platforms_) {
+    SDL_RenderFillRect(renderer_, &platform.rect);
+    }
 
     // Draw player
     player_.Render(renderer_);

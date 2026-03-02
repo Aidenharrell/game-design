@@ -2,6 +2,8 @@
 #include <SDL.h>
 #include <vector>
 #include "input.hpp"
+#include "platform.hpp"
+
 
 class Player {
 public:
@@ -12,6 +14,8 @@ public:
     void SetWalkTextures(const std::vector<SDL_Texture*>& textures, int w, int h);
     void SetPunchTextures(const std::vector<SDL_Texture*>& textures, int w, int h);
 
+    void CheckPlatformCollisions(const std::vector<Platform>& platforms);
+    
     void Update(float dt, const InputState& input);
     void Render(SDL_Renderer* renderer) const;
 
