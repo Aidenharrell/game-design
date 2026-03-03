@@ -10,6 +10,7 @@ static const float kPunchDuration = 0.18f;
 static const float kIdleFrameDuration = 0.12f;
 static const float kWalkFrameDuration = 0.10f;
 static const float kPunchFrameDuration = 0.06f;
+static const float kJumpFrameDuration = 0.08f;
 
 void Player::SetTexture(SDL_Texture* texture, int w, int h) {
     texture_ = texture;
@@ -40,6 +41,14 @@ void Player::SetPunchTextures(const std::vector<SDL_Texture*>& textures, int w, 
     punch_frame_ = 0;
     punch_frame_time_ = 0.0f;
 }
+void Player::SetJumpTextures(const std::vector<SDL_Texture*>& textures, int w, int h) {
+    jump_textures_ = textures;
+    jump_tex_w_ = w;
+    jump_tex_h_ = h;
+    jump_frame_ = 0;
+    jump_frame_time_ = 0.0f;
+}
+
 void Player::CheckPlatformCollisions(const std::vector<Platform>& platforms) {
     on_ground_ = false;
 
@@ -114,6 +123,19 @@ void Player::Update(float dt, const InputState& input) {
         }
     }
 
+    if (!on_ground_ && !jump_textures_.empty()) {
+        jump_frame_time_ += dt;
+        if (jump_frame_time_ >= kJumpFrameDuration) {
+            jump_frame_time_ = 0.0f;
+            if (jump_frame_ + 1 < static_cast<int>(jump_textures_.size())) {
+                ++jump_frame_;
+            }
+        }
+    } else {
+        jump_frame_ = 0;
+        jump_frame_time_ = 0.0f;
+    }
+
     walk_active_ = on_ground_ && std::fabs(vx_) >= 0.01f;
     if (walk_active_ && !walk_textures_.empty()) {
         walk_frame_time_ += dt;
@@ -150,6 +172,10 @@ void Player::Render(SDL_Renderer* renderer) const {
         render_texture = punch_textures_[punch_frame_];
         draw_w = punch_tex_w_;
         draw_h = punch_tex_h_;
+    } else if (!on_ground_ && !jump_textures_.empty()) {
+        render_texture = jump_textures_[jump_frame_];
+        draw_w = jump_tex_w_;
+        draw_h = jump_tex_h_;
     } else if (walk_active_ && !walk_textures_.empty()) {
         render_texture = walk_textures_[walk_frame_];
         draw_w = walk_tex_w_;

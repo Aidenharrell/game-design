@@ -160,9 +160,7 @@ bool Game::Init() {
     if (walk_frames.empty()) {
         walk_frames = CollectFramesByPrefix(walk_dir, "rewalk");
     }
-    if (walk_frames.empty()) {
-        walk_frames = CollectFramesByPrefix(assets_dir, "walk");
-    }
+
     if (walk_frames.empty()) {
         walk_frames = CollectFramesByPrefix(assets_dir, "rewalk");
     }
@@ -171,20 +169,30 @@ bool Game::Init() {
         if (frame) walk_textures_.push_back(frame);
     }
 
+    // load jump frames from jump*.bmp
+    int jump_w = player_tex_w_;
+    int jump_h = player_tex_h_;
+    fs::path jump_dir = assets_dir / "jump";
+    std::vector<fs::path> jump_frames = CollectFramesByPrefix(jump_dir, "jump");
+    if (jump_frames.empty()) {
+        jump_frames = CollectFramesByPrefix(assets_dir, "jump");
+    }
+    for (const fs::path& frame_path : jump_frames) {
+        SDL_Texture* frame = LoadTextureBMP(renderer_, frame_path, &jump_w, &jump_h);
+        if (frame) jump_textures_.push_back(frame);
+    }
+
+
     // Load punch frames from either punch*.bmp or repunch*.bmp
     int punch_w = player_tex_w_;
     int punch_h = player_tex_h_;
     fs::path punch_dir = assets_dir / "punch";
     std::vector<fs::path> punch_frames = CollectFramesByPrefix(punch_dir, "punch");
-    if (punch_frames.empty()) {
-        punch_frames = CollectFramesByPrefix(punch_dir, "repunch");
-    }
+
     if (punch_frames.empty()) {
         punch_frames = CollectFramesByPrefix(assets_dir, "punch");
     }
-    if (punch_frames.empty()) {
-        punch_frames = CollectFramesByPrefix(assets_dir, "repunch");
-    }
+
     for (const fs::path& frame_path : punch_frames) {
         SDL_Texture* frame = LoadTextureBMP(renderer_, frame_path, &punch_w, &punch_h);
         if (frame) punch_textures_.push_back(frame);
@@ -202,6 +210,12 @@ bool Game::Init() {
         std::cout << "Loaded walk frames: " << walk_textures_.size() << "\n";
     } else {
         std::cerr << "No walk frames found in " << walk_dir << "\n";
+    }
+    if (!jump_textures_.empty()) {
+        player_.SetJumpTextures(jump_textures_, jump_w, jump_h);
+        std::cout << "Loaded jump frames: " << jump_textures_.size() << "\n";
+    } else {
+        std::cerr << "No jump frames found in " << jump_dir << "\n";
     }
     if (!punch_textures_.empty()) {
         player_.SetPunchTextures(punch_textures_, punch_w, punch_h);
@@ -297,6 +311,11 @@ void Game::Shutdown() {
         if (tex) SDL_DestroyTexture(tex);
     }
     walk_textures_.clear();
+    // Destroy jump textures
+    for (SDL_Texture* tex : jump_textures_) {
+        if (tex) SDL_DestroyTexture(tex);
+    }
+    jump_textures_.clear();
     // Destroy punch textures
     for (SDL_Texture* tex : punch_textures_) {
         if (tex) SDL_DestroyTexture(tex);
