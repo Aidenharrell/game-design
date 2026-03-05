@@ -9,6 +9,9 @@ class Player {
 public:
     void SetPosition(float x, float y) { x_ = x; y_ = y; }
     void SetGroundY(float y) { ground_y_ = y; }
+    
+    float GetX() const { return x_; }
+    
     void SetTexture(SDL_Texture* texture, int w, int h);
     void SetIdleTextures(const std::vector<SDL_Texture*>& textures, int w, int h);
     void SetWalkTextures(const std::vector<SDL_Texture*>& textures, int w, int h);
@@ -16,17 +19,18 @@ public:
     void SetJumpTextures(const std::vector<SDL_Texture*>& textures, int w, int h);
     void SetHeelKickTextures(const std::vector<SDL_Texture*>& textures, int w, int h);
 
+
+    
     void CheckPlatformCollisions(const std::vector<Platform>& platforms);
     
     void Update(float dt, const InputState& input);
-    void Render(SDL_Renderer* renderer) const;
+    void Render(SDL_Renderer* renderer, float camera_x) const;
 
 private:
     float x_ = 0.0f;
     float y_ = 0.0f;
     float vx_ = 0.0f;
     float vy_ = 0.0f;
-
     float ground_y_ = 0.0f;
     bool on_ground_ = false;
 

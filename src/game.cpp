@@ -249,11 +249,12 @@ bool Game::Init() {
     player_.SetPosition(120.0f, kWindowHeight - 80.0f);
 
     //platforms
-    platforms_.push_back({ SDL_Rect{0, kWindowHeight - 40, kWindowWidth, 40} });  // ground
+    platforms_.push_back({ SDL_Rect{0, kWindowHeight - 40, 5000, 40} });  // ground
 
     platforms_.push_back({ SDL_Rect{300, 400, 200, 20} });
     platforms_.push_back({ SDL_Rect{600, 300, 180, 20} });
     platforms_.push_back({ SDL_Rect{300, 250, 150, 20} });
+    platforms_.push_back({ SDL_Rect{600, 150, 150, 20} });
 
     running_ = true;
     return true;
@@ -295,6 +296,7 @@ void Game::HandleEvents() {
 void Game::Update(float dt) {
     player_.Update(dt, input_);
     player_.CheckPlatformCollisions(platforms_);
+    camera_x_ = player_.GetX() - 480;
 }
 // Render everything
 void Game::Render() {
@@ -311,11 +313,14 @@ void Game::Render() {
     SDL_SetRenderDrawColor(renderer_, 100, 100, 120, 255);
 
     for (const auto& platform : platforms_) {
-    SDL_RenderFillRect(renderer_, &platform.rect);
+    SDL_Rect screenRect = platform.rect;
+    screenRect.x -= static_cast<int>(camera_x_);
+
+    SDL_RenderFillRect(renderer_, &screenRect);
     }
 
     // Draw player
-    player_.Render(renderer_);
+    player_.Render(renderer_, camera_x_);
 
     // Present final frame
     SDL_RenderPresent(renderer_);

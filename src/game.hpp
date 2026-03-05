@@ -25,10 +25,13 @@ private:
     std::vector<SDL_Texture*> jump_textures_{};
     std::vector<SDL_Texture*> heel_kick_textures_{};
     std::vector<Platform> platforms_;
+    
 
     int player_tex_w_ = 0;
     int player_tex_h_ = 0;
     bool running_ = false;
+
+    float camera_x_ = 0.0f;
 
     InputState input_{};
     Player player_{};

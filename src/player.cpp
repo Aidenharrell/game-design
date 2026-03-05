@@ -190,7 +190,7 @@ void Player::Update(float dt, const InputState& input) {
     }
 }
 
-void Player::Render(SDL_Renderer* renderer) const {
+void Player::Render(SDL_Renderer* renderer,  float camera_x) const {
     int draw_w = base_tex_w_;
     int draw_h = base_tex_h_;
     if (draw_w <= 0) draw_w = 48;
@@ -219,8 +219,12 @@ void Player::Render(SDL_Renderer* renderer) const {
         draw_h = idle_tex_h_;
     }
 
-    SDL_Rect body{static_cast<int>(x_), static_cast<int>(y_) - draw_h, draw_w, draw_h};
-
+    SDL_Rect body{
+    static_cast<int>(x_ - camera_x),
+    static_cast<int>(y_) - draw_h,
+    draw_w,
+    draw_h
+};
     if (render_texture) {
         const SDL_RendererFlip flip = facing_left_ ? SDL_FLIP_HORIZONTAL : SDL_FLIP_NONE;
         SDL_RenderCopyEx(renderer, render_texture, nullptr, &body, 0.0, nullptr, flip);
