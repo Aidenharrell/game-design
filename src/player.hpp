@@ -36,7 +36,6 @@ private:
     float heel_kick_timer_ = 0.0f;
     float heel_kick_frame_time_ = 0.0f;
     int heel_kick_frame_ = 0;
-    float jump_combo_window_ = 0.0f;
 
     SDL_Texture* texture_ = nullptr;
     int base_tex_w_ = 0;

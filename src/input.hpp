@@ -6,10 +6,12 @@ struct InputState {
     bool move_right = false;
     bool jump_pressed = false;
     bool punch_pressed = false;
+    bool heel_kick_pressed = false;
 
     void ClearFrame() {
         jump_pressed = false;
         punch_pressed = false;
+        heel_kick_pressed = false;
     }
 
     void OnKeyDown(SDL_Keycode key) {
@@ -17,6 +19,7 @@ struct InputState {
         if (key == SDLK_d || key == SDLK_RIGHT) move_right = true;
         if (key == SDLK_SPACE) jump_pressed = true;
         if (key == SDLK_j) punch_pressed = true;
+        if (key == SDLK_k) heel_kick_pressed = true;
     }
 
     void OnKeyUp(SDL_Keycode key) {

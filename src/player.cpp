@@ -13,7 +13,6 @@ static const float kWalkFrameDuration = 0.10f;
 static const float kPunchFrameDuration = 0.06f;
 static const float kJumpFrameDuration = 0.08f;
 static const float kHeelKickFrameDuration = 0.05f;
-static const float kJumpComboWindowDuration = 0.32f;
 
 void Player::SetTexture(SDL_Texture* texture, int w, int h) {
     texture_ = texture;
@@ -102,21 +101,17 @@ void Player::Update(float dt, const InputState& input) {
     if (on_ground_ && input.jump_pressed) {
         vy_ = kJumpVelocity;
         on_ground_ = false;
-        jump_combo_window_ = kJumpComboWindowDuration;
     }
 
-    if (input.punch_pressed) {
-        if (!on_ground_ && jump_combo_window_ > 0.0f && !heel_kick_textures_.empty()) {
-            heel_kick_timer_ = kHeelKickDuration;
-            heel_kick_frame_ = 0;
-            heel_kick_frame_time_ = 0.0f;
-            punch_timer_ = 0.0f;
-            jump_combo_window_ = 0.0f;
-        } else {
-            punch_timer_ = kPunchDuration;
-            punch_frame_ = 0;
-            punch_frame_time_ = 0.0f;
-        }
+    if (!on_ground_ && input.heel_kick_pressed && !heel_kick_textures_.empty()) {
+        heel_kick_timer_ = kHeelKickDuration;
+        heel_kick_frame_ = 0;
+        heel_kick_frame_time_ = 0.0f;
+        punch_timer_ = 0.0f;
+    } else if (input.punch_pressed) {
+        punch_timer_ = kPunchDuration;
+        punch_frame_ = 0;
+        punch_frame_time_ = 0.0f;
     }
 
     vy_ += kGravity * dt;
@@ -127,12 +122,6 @@ void Player::Update(float dt, const InputState& input) {
         y_ = ground_y_;
         vy_ = 0.0f;
         on_ground_ = true;
-        jump_combo_window_ = 0.0f;
-    }
-
-    if (!on_ground_ && jump_combo_window_ > 0.0f) {
-        jump_combo_window_ -= dt;
-        if (jump_combo_window_ < 0.0f) jump_combo_window_ = 0.0f;
     }
 
     if (heel_kick_timer_ > 0.0f) {

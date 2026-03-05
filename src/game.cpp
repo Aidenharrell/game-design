@@ -198,19 +198,15 @@ bool Game::Init() {
         if (frame) punch_textures_.push_back(frame);
     }
 
-    // Load heel-kick frames from heelkick*.bmp or flipkick*.bmp
+    // Load heel-kick frames from heel.bmp 
     int heel_kick_w = player_tex_w_;
     int heel_kick_h = player_tex_h_;
-    fs::path heel_kick_dir = assets_dir / "heelkick";
-    std::vector<fs::path> heel_kick_frames = CollectFramesByPrefix(heel_kick_dir, "heelkick");
+    fs::path heel_kick_dir = assets_dir / "heel";
+    std::vector<fs::path> heel_kick_frames = CollectFramesByPrefix(heel_kick_dir, "heel");
+
+    
     if (heel_kick_frames.empty()) {
-        heel_kick_frames = CollectFramesByPrefix(heel_kick_dir, "flipkick");
-    }
-    if (heel_kick_frames.empty()) {
-        heel_kick_frames = CollectFramesByPrefix(assets_dir, "heelkick");
-    }
-    if (heel_kick_frames.empty()) {
-        heel_kick_frames = CollectFramesByPrefix(assets_dir, "flipkick");
+        heel_kick_frames = CollectFramesByPrefix(assets_dir, "heel");
     }
     for (const fs::path& frame_path : heel_kick_frames) {
         SDL_Texture* frame = LoadTextureBMP(renderer_, frame_path, &heel_kick_w, &heel_kick_h);
