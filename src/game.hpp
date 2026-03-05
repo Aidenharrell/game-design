@@ -23,6 +23,7 @@ private:
     std::vector<SDL_Texture*> walk_textures_{};
     std::vector<SDL_Texture*> punch_textures_{};
     std::vector<SDL_Texture*> jump_textures_{};
+    std::vector<SDL_Texture*> heel_kick_textures_{};
     std::vector<Platform> platforms_;
 
     int player_tex_w_ = 0;

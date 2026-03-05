@@ -14,6 +14,7 @@ public:
     void SetWalkTextures(const std::vector<SDL_Texture*>& textures, int w, int h);
     void SetPunchTextures(const std::vector<SDL_Texture*>& textures, int w, int h);
     void SetJumpTextures(const std::vector<SDL_Texture*>& textures, int w, int h);
+    void SetHeelKickTextures(const std::vector<SDL_Texture*>& textures, int w, int h);
 
     void CheckPlatformCollisions(const std::vector<Platform>& platforms);
     
@@ -32,6 +33,10 @@ private:
     float punch_timer_ = 0.0f;
     float punch_frame_time_ = 0.0f;
     int punch_frame_ = 0;
+    float heel_kick_timer_ = 0.0f;
+    float heel_kick_frame_time_ = 0.0f;
+    int heel_kick_frame_ = 0;
+    float jump_combo_window_ = 0.0f;
 
     SDL_Texture* texture_ = nullptr;
     int base_tex_w_ = 0;
@@ -42,6 +47,10 @@ private:
     int jump_tex_h_ = 0;
     int jump_frame_ = 0;
     float jump_frame_time_ = 0.0f;
+
+    std::vector<SDL_Texture*> heel_kick_textures_{};
+    int heel_kick_tex_w_ = 0;
+    int heel_kick_tex_h_ = 0;
 
     std::vector<SDL_Texture*> idle_textures_{};
     int idle_tex_w_ = 0;

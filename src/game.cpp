@@ -198,6 +198,25 @@ bool Game::Init() {
         if (frame) punch_textures_.push_back(frame);
     }
 
+    // Load heel-kick frames from heelkick*.bmp or flipkick*.bmp
+    int heel_kick_w = player_tex_w_;
+    int heel_kick_h = player_tex_h_;
+    fs::path heel_kick_dir = assets_dir / "heelkick";
+    std::vector<fs::path> heel_kick_frames = CollectFramesByPrefix(heel_kick_dir, "heelkick");
+    if (heel_kick_frames.empty()) {
+        heel_kick_frames = CollectFramesByPrefix(heel_kick_dir, "flipkick");
+    }
+    if (heel_kick_frames.empty()) {
+        heel_kick_frames = CollectFramesByPrefix(assets_dir, "heelkick");
+    }
+    if (heel_kick_frames.empty()) {
+        heel_kick_frames = CollectFramesByPrefix(assets_dir, "flipkick");
+    }
+    for (const fs::path& frame_path : heel_kick_frames) {
+        SDL_Texture* frame = LoadTextureBMP(renderer_, frame_path, &heel_kick_w, &heel_kick_h);
+        if (frame) heel_kick_textures_.push_back(frame);
+    }
+
     if (!idle_textures_.empty()) {
         player_.SetIdleTextures(idle_textures_, idle_w, idle_h);
         std::cout << "Loaded idle frames: " << idle_textures_.size() << "\n";
@@ -222,6 +241,12 @@ bool Game::Init() {
         std::cout << "Loaded punch frames: " << punch_textures_.size() << "\n";
     } else {
         std::cerr << "No punch frames found in " << punch_dir << "\n";
+    }
+    if (!heel_kick_textures_.empty()) {
+        player_.SetHeelKickTextures(heel_kick_textures_, heel_kick_w, heel_kick_h);
+        std::cout << "Loaded heel kick frames: " << heel_kick_textures_.size() << "\n";
+    } else {
+        std::cerr << "No heel kick frames found in " << heel_kick_dir << " (or flipkick prefix)\n";
     }
 
     player_.SetGroundY(kWindowHeight - 40.0f);
@@ -321,6 +346,11 @@ void Game::Shutdown() {
         if (tex) SDL_DestroyTexture(tex);
     }
     punch_textures_.clear();
+    // Destroy heel kick textures
+    for (SDL_Texture* tex : heel_kick_textures_) {
+        if (tex) SDL_DestroyTexture(tex);
+    }
+    heel_kick_textures_.clear();
 
     // Destroy player base texture
     if (player_texture_) {

@@ -7,10 +7,13 @@ static const float kMoveSpeed = 260.0f;
 static const float kJumpVelocity = -520.0f;
 static const float kGravity = 1400.0f;
 static const float kPunchDuration = 0.18f;
+static const float kHeelKickDuration = 0.22f;
 static const float kIdleFrameDuration = 0.12f;
 static const float kWalkFrameDuration = 0.10f;
 static const float kPunchFrameDuration = 0.06f;
 static const float kJumpFrameDuration = 0.08f;
+static const float kHeelKickFrameDuration = 0.05f;
+static const float kJumpComboWindowDuration = 0.32f;
 
 void Player::SetTexture(SDL_Texture* texture, int w, int h) {
     texture_ = texture;
@@ -47,6 +50,14 @@ void Player::SetJumpTextures(const std::vector<SDL_Texture*>& textures, int w, i
     jump_tex_h_ = h;
     jump_frame_ = 0;
     jump_frame_time_ = 0.0f;
+}
+
+void Player::SetHeelKickTextures(const std::vector<SDL_Texture*>& textures, int w, int h) {
+    heel_kick_textures_ = textures;
+    heel_kick_tex_w_ = w;
+    heel_kick_tex_h_ = h;
+    heel_kick_frame_ = 0;
+    heel_kick_frame_time_ = 0.0f;
 }
 
 void Player::CheckPlatformCollisions(const std::vector<Platform>& platforms) {
@@ -91,12 +102,21 @@ void Player::Update(float dt, const InputState& input) {
     if (on_ground_ && input.jump_pressed) {
         vy_ = kJumpVelocity;
         on_ground_ = false;
+        jump_combo_window_ = kJumpComboWindowDuration;
     }
 
     if (input.punch_pressed) {
-        punch_timer_ = kPunchDuration;
-        punch_frame_ = 0;
-        punch_frame_time_ = 0.0f;
+        if (!on_ground_ && jump_combo_window_ > 0.0f && !heel_kick_textures_.empty()) {
+            heel_kick_timer_ = kHeelKickDuration;
+            heel_kick_frame_ = 0;
+            heel_kick_frame_time_ = 0.0f;
+            punch_timer_ = 0.0f;
+            jump_combo_window_ = 0.0f;
+        } else {
+            punch_timer_ = kPunchDuration;
+            punch_frame_ = 0;
+            punch_frame_time_ = 0.0f;
+        }
     }
 
     vy_ += kGravity * dt;
@@ -107,6 +127,26 @@ void Player::Update(float dt, const InputState& input) {
         y_ = ground_y_;
         vy_ = 0.0f;
         on_ground_ = true;
+        jump_combo_window_ = 0.0f;
+    }
+
+    if (!on_ground_ && jump_combo_window_ > 0.0f) {
+        jump_combo_window_ -= dt;
+        if (jump_combo_window_ < 0.0f) jump_combo_window_ = 0.0f;
+    }
+
+    if (heel_kick_timer_ > 0.0f) {
+        heel_kick_timer_ -= dt;
+        if (heel_kick_timer_ < 0.0f) heel_kick_timer_ = 0.0f;
+    }
+    if (heel_kick_timer_ > 0.0f && !heel_kick_textures_.empty()) {
+        heel_kick_frame_time_ += dt;
+        if (heel_kick_frame_time_ >= kHeelKickFrameDuration) {
+            heel_kick_frame_time_ = 0.0f;
+            if (heel_kick_frame_ + 1 < static_cast<int>(heel_kick_textures_.size())) {
+                ++heel_kick_frame_;
+            }
+        }
     }
 
     if (punch_timer_ > 0.0f) {
@@ -168,7 +208,11 @@ void Player::Render(SDL_Renderer* renderer) const {
     if (draw_h <= 0) draw_h = 64;
 
     SDL_Texture* render_texture = texture_;
-    if (punch_timer_ > 0.0f && !punch_textures_.empty()) {
+    if (heel_kick_timer_ > 0.0f && !heel_kick_textures_.empty()) {
+        render_texture = heel_kick_textures_[heel_kick_frame_];
+        draw_w = heel_kick_tex_w_;
+        draw_h = heel_kick_tex_h_;
+    } else if (punch_timer_ > 0.0f && !punch_textures_.empty()) {
         render_texture = punch_textures_[punch_frame_];
         draw_w = punch_tex_w_;
         draw_h = punch_tex_h_;
