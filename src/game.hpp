@@ -4,6 +4,7 @@
 #include "input.hpp"
 #include "player.hpp"
 #include "platform.hpp"
+#include "texture_set.hpp"
 
 class Game {
 public:
@@ -18,17 +19,15 @@ private:
 
     SDL_Window* window_ = nullptr;
     SDL_Renderer* renderer_ = nullptr;
-    SDL_Texture* player_texture_ = nullptr;
-    std::vector<SDL_Texture*> idle_textures_{};
-    std::vector<SDL_Texture*> walk_textures_{};
-    std::vector<SDL_Texture*> punch_textures_{};
-    std::vector<SDL_Texture*> jump_textures_{};
-    std::vector<SDL_Texture*> heel_kick_textures_{};
+    TextureSet player_texture_{};
+    TextureSet idle_textures_{};
+    TextureSet walk_textures_{};
+    TextureSet punch_textures_{};
+    TextureSet jump_textures_{};
+    TextureSet heel_kick_textures_{};
     std::vector<Platform> platforms_;
     
 
-    int player_tex_w_ = 0;
-    int player_tex_h_ = 0;
     bool running_ = false;
 
     float camera_x_ = 0.0f;

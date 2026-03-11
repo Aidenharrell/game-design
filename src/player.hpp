@@ -3,24 +3,20 @@
 #include <vector>
 #include "input.hpp"
 #include "platform.hpp"
-
+#include "texture_set.hpp"
 
 class Player {
 public:
     void SetPosition(float x, float y) { x_ = x; y_ = y; }
     void SetGroundY(float y) { ground_y_ = y; }
-    
     float GetX() const { return x_; }
-    
-    void SetTexture(SDL_Texture* texture, int w, int h);
-    void SetIdleTextures(const std::vector<SDL_Texture*>& textures, int w, int h);
-    void SetWalkTextures(const std::vector<SDL_Texture*>& textures, int w, int h);
-    void SetPunchTextures(const std::vector<SDL_Texture*>& textures, int w, int h);
-    void SetJumpTextures(const std::vector<SDL_Texture*>& textures, int w, int h);
-    void SetHeelKickTextures(const std::vector<SDL_Texture*>& textures, int w, int h);
+    void SetTexture(const TextureSet& texture_set);
+    void SetIdleTextures(const TextureSet& textures);
+    void SetWalkTextures(const TextureSet& textures);
+    void SetPunchTextures(const TextureSet& textures);
+    void SetJumpTextures(const TextureSet& textures);
+    void SetHeelKickTextures(const TextureSet& textures);
 
-
-    
     void CheckPlatformCollisions(const std::vector<Platform>& platforms);
     
     void Update(float dt, const InputState& input);
@@ -41,37 +37,24 @@ private:
     float heel_kick_frame_time_ = 0.0f;
     int heel_kick_frame_ = 0;
 
-    SDL_Texture* texture_ = nullptr;
-    int base_tex_w_ = 0;
-    int base_tex_h_ = 0;
+    TextureSet base_texture_{};
 
-    std::vector<SDL_Texture*> jump_textures_{};
-    int jump_tex_w_ = 0;
-    int jump_tex_h_ = 0;
+    TextureSet jump_textures_{};
     int jump_frame_ = 0;
     float jump_frame_time_ = 0.0f;
 
-    std::vector<SDL_Texture*> heel_kick_textures_{};
-    int heel_kick_tex_w_ = 0;
-    int heel_kick_tex_h_ = 0;
+    TextureSet heel_kick_textures_{};
 
-    std::vector<SDL_Texture*> idle_textures_{};
-    int idle_tex_w_ = 0;
-    int idle_tex_h_ = 0;
+    TextureSet idle_textures_{};
     int idle_frame_ = 0;
     float idle_frame_time_ = 0.0f;
     bool idle_active_ = false;
 
-    std::vector<SDL_Texture*> walk_textures_{};
-    int walk_tex_w_ = 0;
-    int walk_tex_h_ = 0;
+    TextureSet walk_textures_{};
     int walk_frame_ = 0;
     float walk_frame_time_ = 0.0f;
     bool walk_active_ = false;
 
-    std::vector<SDL_Texture*> punch_textures_{};
-    int punch_tex_w_ = 0;
-    int punch_tex_h_ = 0;
-
+    TextureSet punch_textures_{};
     bool facing_left_ = false;
 };
