@@ -14,47 +14,35 @@ static const float kPunchFrameDuration = 0.06f;
 static const float kJumpFrameDuration = 0.08f;
 static const float kHeelKickFrameDuration = 0.05f;
 
-void Player::SetTexture(SDL_Texture* texture, int w, int h) {
-    texture_ = texture;
-    base_tex_w_ = w;
-    base_tex_h_ = h;
+void Player::SetTexture(const TextureSet& texture_set) {
+    base_texture_ = texture_set;
 }
 
-void Player::SetIdleTextures(const std::vector<SDL_Texture*>& textures, int w, int h) {
+void Player::SetIdleTextures(const TextureSet& textures) {
     idle_textures_ = textures;
-    idle_tex_w_ = w;
-    idle_tex_h_ = h;
     idle_frame_ = 0;
     idle_frame_time_ = 0.0f;
 }
 
-void Player::SetWalkTextures(const std::vector<SDL_Texture*>& textures, int w, int h) {
+void Player::SetWalkTextures(const TextureSet& textures) {
     walk_textures_ = textures;
-    walk_tex_w_ = w;
-    walk_tex_h_ = h;
     walk_frame_ = 0;
     walk_frame_time_ = 0.0f;
 }
 
-void Player::SetPunchTextures(const std::vector<SDL_Texture*>& textures, int w, int h) {
+void Player::SetPunchTextures(const TextureSet& textures) {
     punch_textures_ = textures;
-    punch_tex_w_ = w;
-    punch_tex_h_ = h;
     punch_frame_ = 0;
     punch_frame_time_ = 0.0f;
 }
-void Player::SetJumpTextures(const std::vector<SDL_Texture*>& textures, int w, int h) {
+void Player::SetJumpTextures(const TextureSet& textures) {
     jump_textures_ = textures;
-    jump_tex_w_ = w;
-    jump_tex_h_ = h;
     jump_frame_ = 0;
     jump_frame_time_ = 0.0f;
 }
 
-void Player::SetHeelKickTextures(const std::vector<SDL_Texture*>& textures, int w, int h) {
+void Player::SetHeelKickTextures(const TextureSet& textures) {
     heel_kick_textures_ = textures;
-    heel_kick_tex_w_ = w;
-    heel_kick_tex_h_ = h;
     heel_kick_frame_ = 0;
     heel_kick_frame_time_ = 0.0f;
 }
@@ -64,9 +52,9 @@ void Player::CheckPlatformCollisions(const std::vector<Platform>& platforms) {
 
     SDL_Rect playerRect{
         static_cast<int>(x_),
-        static_cast<int>(y_) - base_tex_h_,
-        base_tex_w_,
-        base_tex_h_
+        static_cast<int>(y_) - base_texture_.height,
+        base_texture_.width,
+        base_texture_.height
     };
 
     for (const auto& platform : platforms) {
@@ -103,7 +91,7 @@ void Player::Update(float dt, const InputState& input) {
         on_ground_ = false;
     }
 
-    if (!on_ground_ && input.heel_kick_pressed && !heel_kick_textures_.empty()) {
+    if (!on_ground_ && input.heel_kick_pressed && !heel_kick_textures_.Empty()) {
         heel_kick_timer_ = kHeelKickDuration;
         heel_kick_frame_ = 0;
         heel_kick_frame_time_ = 0.0f;
@@ -128,11 +116,11 @@ void Player::Update(float dt, const InputState& input) {
         heel_kick_timer_ -= dt;
         if (heel_kick_timer_ < 0.0f) heel_kick_timer_ = 0.0f;
     }
-    if (heel_kick_timer_ > 0.0f && !heel_kick_textures_.empty()) {
+    if (heel_kick_timer_ > 0.0f && !heel_kick_textures_.Empty()) {
         heel_kick_frame_time_ += dt;
         if (heel_kick_frame_time_ >= kHeelKickFrameDuration) {
             heel_kick_frame_time_ = 0.0f;
-            if (heel_kick_frame_ + 1 < static_cast<int>(heel_kick_textures_.size())) {
+            if (heel_kick_frame_ + 1 < static_cast<int>(heel_kick_textures_.frames.size())) {
                 ++heel_kick_frame_;
             }
         }
@@ -142,21 +130,21 @@ void Player::Update(float dt, const InputState& input) {
         punch_timer_ -= dt;
         if (punch_timer_ < 0.0f) punch_timer_ = 0.0f;
     }
-    if (punch_timer_ > 0.0f && !punch_textures_.empty()) {
+    if (punch_timer_ > 0.0f && !punch_textures_.Empty()) {
         punch_frame_time_ += dt;
         if (punch_frame_time_ >= kPunchFrameDuration) {
             punch_frame_time_ = 0.0f;
-            if (punch_frame_ + 1 < static_cast<int>(punch_textures_.size())) {
+            if (punch_frame_ + 1 < static_cast<int>(punch_textures_.frames.size())) {
                 ++punch_frame_;
             }
         }
     }
 
-    if (!on_ground_ && !jump_textures_.empty()) {
+    if (!on_ground_ && !jump_textures_.Empty()) {
         jump_frame_time_ += dt;
         if (jump_frame_time_ >= kJumpFrameDuration) {
             jump_frame_time_ = 0.0f;
-            if (jump_frame_ + 1 < static_cast<int>(jump_textures_.size())) {
+            if (jump_frame_ + 1 < static_cast<int>(jump_textures_.frames.size())) {
                 ++jump_frame_;
             }
         }
@@ -166,11 +154,11 @@ void Player::Update(float dt, const InputState& input) {
     }
 
     walk_active_ = on_ground_ && std::fabs(vx_) >= 0.01f;
-    if (walk_active_ && !walk_textures_.empty()) {
+    if (walk_active_ && !walk_textures_.Empty()) {
         walk_frame_time_ += dt;
         if (walk_frame_time_ >= kWalkFrameDuration) {
             walk_frame_time_ = 0.0f;
-            walk_frame_ = (walk_frame_ + 1) % static_cast<int>(walk_textures_.size());
+            walk_frame_ = (walk_frame_ + 1) % static_cast<int>(walk_textures_.frames.size());
         }
     } else {
         walk_frame_ = 0;
@@ -178,11 +166,11 @@ void Player::Update(float dt, const InputState& input) {
     }
 
     idle_active_ = on_ground_ && std::fabs(vx_) < 0.01f;
-    if (idle_active_ && !idle_textures_.empty()) {
+    if (idle_active_ && !idle_textures_.Empty()) {
         idle_frame_time_ += dt;
         if (idle_frame_time_ >= kIdleFrameDuration) {
             idle_frame_time_ = 0.0f;
-            idle_frame_ = (idle_frame_ + 1) % static_cast<int>(idle_textures_.size());
+            idle_frame_ = (idle_frame_ + 1) % static_cast<int>(idle_textures_.frames.size());
         }
     } else {
         idle_frame_ = 0;
@@ -190,41 +178,41 @@ void Player::Update(float dt, const InputState& input) {
     }
 }
 
-void Player::Render(SDL_Renderer* renderer,  float camera_x) const {
-    int draw_w = base_tex_w_;
-    int draw_h = base_tex_h_;
+void Player::Render(SDL_Renderer* renderer, float camera_x) const {
+    int draw_w = base_texture_.width;
+    int draw_h = base_texture_.height;
     if (draw_w <= 0) draw_w = 48;
     if (draw_h <= 0) draw_h = 64;
 
-    SDL_Texture* render_texture = texture_;
-    if (heel_kick_timer_ > 0.0f && !heel_kick_textures_.empty()) {
-        render_texture = heel_kick_textures_[heel_kick_frame_];
-        draw_w = heel_kick_tex_w_;
-        draw_h = heel_kick_tex_h_;
-    } else if (punch_timer_ > 0.0f && !punch_textures_.empty()) {
-        render_texture = punch_textures_[punch_frame_];
-        draw_w = punch_tex_w_;
-        draw_h = punch_tex_h_;
-    } else if (!on_ground_ && !jump_textures_.empty()) {
-        render_texture = jump_textures_[jump_frame_];
-        draw_w = jump_tex_w_;
-        draw_h = jump_tex_h_;
-    } else if (walk_active_ && !walk_textures_.empty()) {
-        render_texture = walk_textures_[walk_frame_];
-        draw_w = walk_tex_w_;
-        draw_h = walk_tex_h_;
-    } else if (idle_active_ && !idle_textures_.empty()) {
-        render_texture = idle_textures_[idle_frame_];
-        draw_w = idle_tex_w_;
-        draw_h = idle_tex_h_;
+    SDL_Texture* render_texture = base_texture_.First();
+    if (heel_kick_timer_ > 0.0f && !heel_kick_textures_.Empty()) {
+        render_texture = heel_kick_textures_.frames[heel_kick_frame_];
+        draw_w = heel_kick_textures_.width;
+        draw_h = heel_kick_textures_.height;
+    } else if (punch_timer_ > 0.0f && !punch_textures_.Empty()) {
+        render_texture = punch_textures_.frames[punch_frame_];
+        draw_w = punch_textures_.width;
+        draw_h = punch_textures_.height;
+    } else if (!on_ground_ && !jump_textures_.Empty()) {
+        render_texture = jump_textures_.frames[jump_frame_];
+        draw_w = jump_textures_.width;
+        draw_h = jump_textures_.height;
+    } else if (walk_active_ && !walk_textures_.Empty()) {
+        render_texture = walk_textures_.frames[walk_frame_];
+        draw_w = walk_textures_.width;
+        draw_h = walk_textures_.height;
+    } else if (idle_active_ && !idle_textures_.Empty()) {
+        render_texture = idle_textures_.frames[idle_frame_];
+        draw_w = idle_textures_.width;
+        draw_h = idle_textures_.height;
     }
 
     SDL_Rect body{
-    static_cast<int>(x_ - camera_x),
-    static_cast<int>(y_) - draw_h,
-    draw_w,
-    draw_h
-};
+        static_cast<int>(x_ - camera_x),
+        static_cast<int>(y_) - draw_h,
+        draw_w,
+        draw_h
+    };
     if (render_texture) {
         const SDL_RendererFlip flip = facing_left_ ? SDL_FLIP_HORIZONTAL : SDL_FLIP_NONE;
         SDL_RenderCopyEx(renderer, render_texture, nullptr, &body, 0.0, nullptr, flip);

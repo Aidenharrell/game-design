@@ -12,7 +12,6 @@ namespace fs = std::filesystem;
 static const int kWindowWidth = 960;
 static const int kWindowHeight = 540;
 
-// Load BMP from a single path
 static SDL_Texture* LoadTextureBMP(SDL_Renderer* renderer, const fs::path& path, int* out_w, int* out_h) {
     if (!fs::exists(path)) {
         std::cerr << "File not found: " << path << "\n";
@@ -33,6 +32,45 @@ static SDL_Texture* LoadTextureBMP(SDL_Renderer* renderer, const fs::path& path,
 
     SDL_FreeSurface(bmp);
     return texture;
+}
+
+static TextureSet LoadSingleTexture(SDL_Renderer* renderer, const fs::path& path) {
+    TextureSet texture_set;
+    SDL_Texture* texture = LoadTextureBMP(renderer, path, &texture_set.width, &texture_set.height);
+    if (texture) {
+        texture_set.frames.push_back(texture);
+    }
+    return texture_set;
+}
+
+static TextureSet LoadTextureSet(SDL_Renderer* renderer, const std::vector<fs::path>& frame_paths) {
+    TextureSet texture_set;
+    for (const fs::path& frame_path : frame_paths) {
+        int frame_w = 0;
+        int frame_h = 0;
+        SDL_Texture* frame = LoadTextureBMP(renderer, frame_path, &frame_w, &frame_h);
+        if (!frame) {
+            continue;
+        }
+
+        if (texture_set.Empty()) {
+            texture_set.width = frame_w;
+            texture_set.height = frame_h;
+        }
+        texture_set.frames.push_back(frame);
+    }
+    return texture_set;
+}
+
+static void DestroyTextureSet(TextureSet& texture_set) {
+    for (SDL_Texture* texture : texture_set.frames) {
+        if (texture) {
+            SDL_DestroyTexture(texture);
+        }
+    }
+    texture_set.frames.clear();
+    texture_set.width = 0;
+    texture_set.height = 0;
 }
 
 static fs::path ResolveAssetsDir() {
@@ -124,123 +162,82 @@ bool Game::Init() {
 
     fs::path assets_dir = ResolveAssetsDir();
 
-    // Load player base texture
     fs::path player_path = assets_dir / "Opanda.bmp";
-    player_texture_ = LoadTextureBMP(renderer_, player_path, &player_tex_w_, &player_tex_h_);
-    if (!player_texture_) {
+    player_texture_ = LoadSingleTexture(renderer_, player_path);
+    if (player_texture_.Empty()) {
         std::cerr << "Failed to load " << player_path << "\n";
     } else {
-        player_.SetTexture(player_texture_, player_tex_w_, player_tex_h_);
+        player_.SetTexture(player_texture_);
     }
 
-    // Load idle frames by filename prefix (idle*.bmp or idel*.bmp)
-    int idle_w = player_tex_w_;
-    int idle_h = player_tex_h_;
     fs::path idle_dir = assets_dir / "idel";
-    std::vector<fs::path> idle_frames = CollectFramesByPrefix(idle_dir, "idle");
+    std::vector<fs::path> idle_frames = CollectFramesByPrefix(idle_dir, "idel");
     if (idle_frames.empty()) {
         idle_frames = CollectFramesByPrefix(idle_dir, "idel");
     }
     if (idle_frames.empty()) {
-        idle_frames = CollectFramesByPrefix(assets_dir, "idle");
-    }
-    if (idle_frames.empty()) {
         idle_frames = CollectFramesByPrefix(assets_dir, "idel");
     }
-    for (const fs::path& frame_path : idle_frames) {
-        SDL_Texture* frame = LoadTextureBMP(renderer_, frame_path, &idle_w, &idle_h);
-        if (frame) idle_textures_.push_back(frame);
-    }
+    idle_textures_ = LoadTextureSet(renderer_, idle_frames);
 
-    // Load walk frames from either walk*.bmp or rewalk*.bmp
-    int walk_w = player_tex_w_;
-    int walk_h = player_tex_h_;
     fs::path walk_dir = assets_dir / "walk";
     std::vector<fs::path> walk_frames = CollectFramesByPrefix(walk_dir, "walk");
     if (walk_frames.empty()) {
         walk_frames = CollectFramesByPrefix(walk_dir, "rewalk");
     }
-
     if (walk_frames.empty()) {
         walk_frames = CollectFramesByPrefix(assets_dir, "rewalk");
     }
-    for (const fs::path& frame_path : walk_frames) {
-        SDL_Texture* frame = LoadTextureBMP(renderer_, frame_path, &walk_w, &walk_h);
-        if (frame) walk_textures_.push_back(frame);
-    }
+    walk_textures_ = LoadTextureSet(renderer_, walk_frames);
 
-    // load jump frames from jump*.bmp
-    int jump_w = player_tex_w_;
-    int jump_h = player_tex_h_;
     fs::path jump_dir = assets_dir / "jump";
     std::vector<fs::path> jump_frames = CollectFramesByPrefix(jump_dir, "jump");
     if (jump_frames.empty()) {
         jump_frames = CollectFramesByPrefix(assets_dir, "jump");
     }
-    for (const fs::path& frame_path : jump_frames) {
-        SDL_Texture* frame = LoadTextureBMP(renderer_, frame_path, &jump_w, &jump_h);
-        if (frame) jump_textures_.push_back(frame);
-    }
+    jump_textures_ = LoadTextureSet(renderer_, jump_frames);
 
-
-    // Load punch frames from either punch*.bmp or repunch*.bmp
-    int punch_w = player_tex_w_;
-    int punch_h = player_tex_h_;
     fs::path punch_dir = assets_dir / "punch";
     std::vector<fs::path> punch_frames = CollectFramesByPrefix(punch_dir, "punch");
-
     if (punch_frames.empty()) {
         punch_frames = CollectFramesByPrefix(assets_dir, "punch");
     }
+    punch_textures_ = LoadTextureSet(renderer_, punch_frames);
 
-    for (const fs::path& frame_path : punch_frames) {
-        SDL_Texture* frame = LoadTextureBMP(renderer_, frame_path, &punch_w, &punch_h);
-        if (frame) punch_textures_.push_back(frame);
-    }
-
-    // Load heel-kick frames from heel.bmp 
-    int heel_kick_w = player_tex_w_;
-    int heel_kick_h = player_tex_h_;
     fs::path heel_kick_dir = assets_dir / "heel";
     std::vector<fs::path> heel_kick_frames = CollectFramesByPrefix(heel_kick_dir, "heel");
-
-    
     if (heel_kick_frames.empty()) {
         heel_kick_frames = CollectFramesByPrefix(assets_dir, "heel");
     }
-    for (const fs::path& frame_path : heel_kick_frames) {
-        SDL_Texture* frame = LoadTextureBMP(renderer_, frame_path, &heel_kick_w, &heel_kick_h);
-        if (frame) heel_kick_textures_.push_back(frame);
-    }
+    heel_kick_textures_ = LoadTextureSet(renderer_, heel_kick_frames);
 
-    if (!idle_textures_.empty()) {
-        player_.SetIdleTextures(idle_textures_, idle_w, idle_h);
-        std::cout << "Loaded idle frames: " << idle_textures_.size() << "\n";
+    if (!idle_textures_.Empty()) {
+        player_.SetIdleTextures(idle_textures_);
+        std::cout << "Loaded idle frames: " << idle_textures_.frames.size() << "\n";
     } else {
         std::cerr << "No idle frames found in " << idle_dir << "\n";
     }
 
-    if (!walk_textures_.empty()) {
-        player_.SetWalkTextures(walk_textures_, walk_w, walk_h);
-        std::cout << "Loaded walk frames: " << walk_textures_.size() << "\n";
+    if (!walk_textures_.Empty()) {
+        player_.SetWalkTextures(walk_textures_);
+        std::cout << "Loaded walk frames: " << walk_textures_.frames.size() << "\n";
     } else {
         std::cerr << "No walk frames found in " << walk_dir << "\n";
     }
-    if (!jump_textures_.empty()) {
-        player_.SetJumpTextures(jump_textures_, jump_w, jump_h);
-        std::cout << "Loaded jump frames: " << jump_textures_.size() << "\n";
+    if (!jump_textures_.Empty()) {
+        player_.SetJumpTextures(jump_textures_);
+        std::cout << "Loaded jump frames: " << jump_textures_.frames.size() << "\n";
     } else {
-        std::cerr << "No jump frames found in " << jump_dir << "\n";
-    }
-    if (!punch_textures_.empty()) {
-        player_.SetPunchTextures(punch_textures_, punch_w, punch_h);
-        std::cout << "Loaded punch frames: " << punch_textures_.size() << "\n";
+        std::cerr << "No jump frames found in " << jump_dir << "\n";}
+    if (!punch_textures_.Empty()) {
+        player_.SetPunchTextures(punch_textures_);
+        std::cout << "Loaded punch frames: " << punch_textures_.frames.size() << "\n";
     } else {
         std::cerr << "No punch frames found in " << punch_dir << "\n";
     }
-    if (!heel_kick_textures_.empty()) {
-        player_.SetHeelKickTextures(heel_kick_textures_, heel_kick_w, heel_kick_h);
-        std::cout << "Loaded heel kick frames: " << heel_kick_textures_.size() << "\n";
+    if (!heel_kick_textures_.Empty()) {
+        player_.SetHeelKickTextures(heel_kick_textures_);
+        std::cout << "Loaded heel kick frames: " << heel_kick_textures_.frames.size() << "\n";
     } else {
         std::cerr << "No heel kick frames found in " << heel_kick_dir << " (or flipkick prefix)\n";
     }
@@ -326,38 +323,12 @@ void Game::Render() {
     SDL_RenderPresent(renderer_);
 }
 void Game::Shutdown() {
-    // Destroy idle textures
-    for (SDL_Texture* tex : idle_textures_) {
-        if (tex) SDL_DestroyTexture(tex);
-    }
-    idle_textures_.clear();
-
-    // Destroy walk textures
-    for (SDL_Texture* tex : walk_textures_) {
-        if (tex) SDL_DestroyTexture(tex);
-    }
-    walk_textures_.clear();
-    // Destroy jump textures
-    for (SDL_Texture* tex : jump_textures_) {
-        if (tex) SDL_DestroyTexture(tex);
-    }
-    jump_textures_.clear();
-    // Destroy punch textures
-    for (SDL_Texture* tex : punch_textures_) {
-        if (tex) SDL_DestroyTexture(tex);
-    }
-    punch_textures_.clear();
-    // Destroy heel kick textures
-    for (SDL_Texture* tex : heel_kick_textures_) {
-        if (tex) SDL_DestroyTexture(tex);
-    }
-    heel_kick_textures_.clear();
-
-    // Destroy player base texture
-    if (player_texture_) {
-        SDL_DestroyTexture(player_texture_);
-        player_texture_ = nullptr;
-    }
+    DestroyTextureSet(idle_textures_);
+    DestroyTextureSet(walk_textures_);
+    DestroyTextureSet(jump_textures_);
+    DestroyTextureSet(punch_textures_);
+    DestroyTextureSet(heel_kick_textures_);
+    DestroyTextureSet(player_texture_);
 
     // Destroy renderer and window
     if (renderer_) {
