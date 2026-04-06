@@ -165,6 +165,14 @@ bool Game::Init() {
 
     fs::path player_path = assets_dir / "Opanda.bmp";
     player_texture_ = LoadSingleTexture(renderer_, player_path);
+    fs::path platform_path = assets_dir / "branch.bmp";
+    platform_textures_ = LoadSingleTexture(renderer_, platform_path);
+    fs::path background_path = assets_dir / "Background.bmp";
+    background_texture_ = LoadSingleTexture(renderer_, background_path);
+    fs::path tree_path = assets_dir / "tree.bmp";
+    tree_texture_ = LoadSingleTexture(renderer_, tree_path);
+    fs::path bush_path = assets_dir / "bush.bmp";
+    bush_texture_ = LoadSingleTexture(renderer_, bush_path);
     if (player_texture_.Empty()) {
         std::cerr << "Failed to load " << player_path << "\n";
     } else {
