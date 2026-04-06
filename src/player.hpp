@@ -10,6 +10,7 @@ public:
     void SetPosition(float x, float y) { x_ = x; y_ = y; }
     void SetGroundY(float y) { ground_y_ = y; }
     float GetX() const { return x_; }
+    float GetY() const { return y_; }
     void SetTexture(const TextureSet& texture_set);
     void SetIdleTextures(const TextureSet& textures);
     void SetWalkTextures(const TextureSet& textures);
@@ -18,9 +19,12 @@ public:
     void SetHeelKickTextures(const TextureSet& textures);
 
     void CheckPlatformCollisions(const std::vector<Platform>& platforms);
-    
+
     void Update(float dt, const InputState& input);
     void Render(SDL_Renderer* renderer, float camera_x) const;
+    SDL_Rect GetBodyRect() const;
+    SDL_Rect GetAttackRect() const;
+    void ApplyKnockback(float vx, float vy);
 
 private:
     float x_ = 0.0f;

@@ -253,6 +253,14 @@ bool Game::Init() {
     platforms_.push_back({ SDL_Rect{300, 250, 150, 20} });
     platforms_.push_back({ SDL_Rect{600, 150, 150, 20} });
 
+    SquirrelEnemy lower_squirrel;
+    lower_squirrel.SetPosition(360.0f, 400.0f);
+    squirrels_.push_back(lower_squirrel);
+
+    SquirrelEnemy upper_squirrel;
+    upper_squirrel.SetPosition(640.0f, 150.0f);
+    squirrels_.push_back(upper_squirrel);
+
     running_ = true;
     return true;
 }
@@ -293,6 +301,23 @@ void Game::HandleEvents() {
 void Game::Update(float dt) {
     player_.Update(dt, input_);
     player_.CheckPlatformCollisions(platforms_);
+
+    const SDL_Rect player_rect = player_.GetBodyRect();
+    const SDL_Rect attack_rect = player_.GetAttackRect();
+
+    for (SquirrelEnemy& squirrel : squirrels_) {
+        squirrel.Update(dt, player_rect);
+
+        if (attack_rect.w > 0 && attack_rect.h > 0) {
+            squirrel.TryTakeHit(attack_rect);
+        }
+
+        float knockback_x = 0.0f;
+        if (squirrel.CheckProjectileHitPlayer(player_rect, &knockback_x)) {
+            player_.ApplyKnockback(knockback_x, -220.0f);
+        }
+    }
+
     camera_x_ = player_.GetX() - 480;
 }
 // Render everything
@@ -314,6 +339,10 @@ void Game::Render() {
     screenRect.x -= static_cast<int>(camera_x_);
 
     SDL_RenderFillRect(renderer_, &screenRect);
+    }
+
+    for (const SquirrelEnemy& squirrel : squirrels_) {
+        squirrel.Render(renderer_, camera_x_);
     }
 
     // Draw player
