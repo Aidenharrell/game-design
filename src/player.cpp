@@ -83,7 +83,16 @@ void Player::ApplyKnockback(float vx, float vy) {
 void Player::CheckPlatformCollisions(const std::vector<Platform>& platforms) {
     on_ground_ = false;
 
+<<<<<<< HEAD
     SDL_Rect playerRect = GetBodyRect();
+=======
+    SDL_Rect playerRect{
+        static_cast<int>(x_),
+        static_cast<int>(y_) - base_texture_.height,
+        base_texture_.width,
+        base_texture_.height
+    };
+>>>>>>> 49b8015 ( takes off tex_h and tex_w uses texture set now)
 
     for (const auto& platform : platforms) {
         SDL_Rect p = platform.rect;
@@ -206,7 +215,11 @@ void Player::Update(float dt, const InputState& input) {
     }
 }
 
+<<<<<<< HEAD
 void Player::Render(SDL_Renderer* renderer, float camera_x) const {
+=======
+void Player::Render(SDL_Renderer* renderer) const {
+>>>>>>> 49b8015 ( takes off tex_h and tex_w uses texture set now)
     int draw_w = base_texture_.width;
     int draw_h = base_texture_.height;
     if (draw_w <= 0) draw_w = 48;

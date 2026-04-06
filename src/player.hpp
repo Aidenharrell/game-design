@@ -9,8 +9,11 @@ class Player {
 public:
     void SetPosition(float x, float y) { x_ = x; y_ = y; }
     void SetGroundY(float y) { ground_y_ = y; }
+<<<<<<< HEAD
     float GetX() const { return x_; }
     float GetY() const { return y_; }
+=======
+>>>>>>> 49b8015 ( takes off tex_h and tex_w uses texture set now)
     void SetTexture(const TextureSet& texture_set);
     void SetIdleTextures(const TextureSet& textures);
     void SetWalkTextures(const TextureSet& textures);

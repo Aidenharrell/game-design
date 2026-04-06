@@ -165,16 +165,8 @@ bool Game::Init() {
     fs::path assets_dir = ResolveAssetsDir();
 
     fs::path player_path = assets_dir / "Opanda.bmp";
-    player_texture_ = LoadSingleTexture(renderer_, player_path);
-    fs::path platform_path = assets_dir / "branch.bmp";
-    platform_textures_ = LoadSingleTexture(renderer_, platform_path);
-    fs::path background_path = assets_dir / "Background.bmp";
-    background_texture_ = LoadSingleTexture(renderer_, background_path);
-    fs::path tree_path = assets_dir / "tree.bmp";
-    tree_texture_ = LoadSingleTexture(renderer_, tree_path);
-    fs::path bush_path = assets_dir / "bush.bmp";
-    bush_texture_ = LoadSingleTexture(renderer_, bush_path);
-    if (player_texture_.Empty()) {
+    player_texture_ = LoadTextureBMP(renderer_, player_path, &player_tex_w_, &player_tex_h_);
+    if (!player_texture_) {
         std::cerr << "Failed to load " << player_path << "\n";
     } else {
         player_.SetTexture(player_texture_);
@@ -414,13 +406,38 @@ void Game::Render() {
     SDL_RenderPresent(renderer_);
 }
 void Game::Shutdown() {
-    DestroyTextureSet(idle_textures_);
-    DestroyTextureSet(walk_textures_);
-    DestroyTextureSet(jump_textures_);
-    DestroyTextureSet(punch_textures_);
-    DestroyTextureSet(heel_kick_textures_);
-    DestroyTextureSet(player_texture_);
-    DestroyTextureSet(platform_textures_);
+    // Destroy idle textures
+    for (SDL_Texture* tex : idle_textures_) {
+        if (tex) SDL_DestroyTexture(tex);
+    }
+    idle_textures_.clear();
+
+    // Destroy walk textures
+    for (SDL_Texture* tex : walk_textures_) {
+        if (tex) SDL_DestroyTexture(tex);
+    }
+    walk_textures_.clear();
+    // Destroy jump textures
+    for (SDL_Texture* tex : jump_textures_) {
+        if (tex) SDL_DestroyTexture(tex);
+    }
+    jump_textures_.clear();
+    // Destroy punch textures
+    for (SDL_Texture* tex : punch_textures_) {
+        if (tex) SDL_DestroyTexture(tex);
+    }
+    punch_textures_.clear();
+    // Destroy heel kick textures
+    for (SDL_Texture* tex : heel_kick_textures_) {
+        if (tex) SDL_DestroyTexture(tex);
+    }
+    heel_kick_textures_.clear();
+
+    // Destroy player base texture
+    if (player_texture_) {
+        SDL_DestroyTexture(player_texture_);
+        player_texture_ = nullptr;
+    }
 
     // Destroy renderer and window
     if (renderer_) {
