@@ -44,6 +44,21 @@ static TextureSet LoadSingleTexture(SDL_Renderer* renderer, const fs::path& path
     return texture_set;
 }
 
+static TextureSet LoadSingleTexture(SDL_Renderer* renderer,
+                                    const std::vector<fs::path>& candidate_paths,
+                                    fs::path* out_loaded_path = nullptr) {
+    for (const fs::path& candidate : candidate_paths) {
+        TextureSet texture_set = LoadSingleTexture(renderer, candidate);
+        if (!texture_set.Empty()) {
+            if (out_loaded_path) {
+                *out_loaded_path = candidate;
+            }
+            return texture_set;
+        }
+    }
+    return {};
+}
+
 static TextureSet LoadTextureSet(SDL_Renderer* renderer, const std::vector<fs::path>& frame_paths) {
     TextureSet texture_set;
     for (const fs::path& frame_path : frame_paths) {
@@ -140,6 +155,16 @@ static std::vector<fs::path> CollectFramesByPrefix(const fs::path& dir, const st
     return frames;
 }
 
+static std::vector<fs::path> CollectFramesByPrefix(const std::vector<fs::path>& dirs, const std::string& prefix) {
+    for (const fs::path& dir : dirs) {
+        std::vector<fs::path> frames = CollectFramesByPrefix(dir, prefix);
+        if (!frames.empty()) {
+            return frames;
+        }
+    }
+    return {};
+}
+
 bool Game::Init() {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS) != 0) {
         std::cerr << "SDL_Init failed: " << SDL_GetError() << "\n";
@@ -220,6 +245,58 @@ bool Game::Init() {
     }
     heel_kick_textures_ = LoadTextureSet(renderer_, heel_kick_frames);
 
+    fs::path background_path;
+    background_texture_ = LoadSingleTexture(
+        renderer_,
+        {
+            assets_dir / "background" / "Background.bmp",
+            assets_dir / "Background.bmp"
+        },
+        &background_path);
+
+    fs::path tree_path;
+    tree_texture_ = LoadSingleTexture(
+        renderer_,
+        {
+            assets_dir / "tree" / "tree.bmp",
+            assets_dir / "tree.bmp"
+        },
+        &tree_path);
+
+    fs::path bush_path;
+    bush_texture_ = LoadSingleTexture(
+        renderer_,
+        {
+            assets_dir / "tree" / "bush.bmp",
+            assets_dir / "bush.bmp"
+        },
+        &bush_path);
+
+    fs::path branch_path;
+    platform_textures_ = LoadSingleTexture(
+        renderer_,
+        {
+            assets_dir / "tree" / "branch.bmp",
+            assets_dir / "branch.bmp"
+        },
+        &branch_path);
+
+    std::vector<fs::path> squirrel_frames = CollectFramesByPrefix(
+        std::vector<fs::path>{
+            assets_dir / "squirrelshot",
+            assets_dir
+        },
+        "shoot");
+    squirrel_textures_ = LoadTextureSet(renderer_, squirrel_frames);
+
+    std::vector<fs::path> acorn_frames = CollectFramesByPrefix(
+        std::vector<fs::path>{
+            assets_dir / "acorn",
+            assets_dir
+        },
+        "acorn");
+    acorn_textures_ = LoadTextureSet(renderer_, acorn_frames);
+
     if (!idle_textures_.Empty()) {
         player_.SetIdleTextures(idle_textures_);
         std::cout << "Loaded idle frames: " << idle_textures_.frames.size() << "\n";
@@ -250,6 +327,24 @@ bool Game::Init() {
     } else {
         std::cerr << "No heel kick frames found in " << heel_kick_dir << " (or flipkick prefix)\n";
     }
+    if (background_texture_.Empty()) {
+        std::cerr << "No background texture found under " << assets_dir << "\n";
+    }
+    if (tree_texture_.Empty()) {
+        std::cerr << "No tree texture found under " << assets_dir << "\n";
+    }
+    if (bush_texture_.Empty()) {
+        std::cerr << "No bush texture found under " << assets_dir << "\n";
+    }
+    if (platform_textures_.Empty()) {
+        std::cerr << "No branch texture found under " << assets_dir << "\n";
+    }
+    if (squirrel_textures_.Empty()) {
+        std::cerr << "No squirrel frames found under " << assets_dir << "\n";
+    }
+    if (acorn_textures_.Empty()) {
+        std::cerr << "No acorn frames found under " << assets_dir << "\n";
+    }
 
     player_.SetGroundY(kWindowHeight - 40.0f);
     player_.SetPosition(120.0f, kWindowHeight - 80.0f);
@@ -264,10 +359,12 @@ bool Game::Init() {
 
     SquirrelEnemy lower_squirrel;
     lower_squirrel.SetPosition(360.0f, 400.0f);
+    lower_squirrel.SetTextures(squirrel_textures_, acorn_textures_);
     squirrels_.push_back(lower_squirrel);
 
     SquirrelEnemy upper_squirrel;
     upper_squirrel.SetPosition(640.0f, 150.0f);
+    upper_squirrel.SetTextures(squirrel_textures_, acorn_textures_);
     squirrels_.push_back(upper_squirrel);
 
     running_ = true;
@@ -424,6 +521,8 @@ void Game::Shutdown() {
     DestroyTextureSet(background_texture_);
     DestroyTextureSet(tree_texture_);
     DestroyTextureSet(bush_texture_);
+    DestroyTextureSet(squirrel_textures_);
+    DestroyTextureSet(acorn_textures_);
 
     // Destroy renderer and window
     if (renderer_) {

@@ -2,6 +2,7 @@
 
 #include <SDL.h>
 #include <vector>
+#include "texture_set.hpp"
 
 struct AcornProjectile {
     float x = 0.0f;
@@ -14,6 +15,7 @@ struct AcornProjectile {
 class SquirrelEnemy {
 public:
     void SetPosition(float x, float y);
+    void SetTextures(const TextureSet& squirrel_textures, const TextureSet& acorn_textures);
     void Update(float dt, const SDL_Rect& player_rect);
     void Render(SDL_Renderer* renderer, float camera_x) const;
     bool TryTakeHit(const SDL_Rect& attack_rect);
@@ -29,4 +31,6 @@ private:
     float hurt_cooldown_ = 0.0f;
     int hits_remaining_ = 2;
     std::vector<AcornProjectile> acorns_{};
+    TextureSet squirrel_textures_{};
+    TextureSet acorn_textures_{};
 };

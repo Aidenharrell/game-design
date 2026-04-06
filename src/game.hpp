@@ -31,6 +31,8 @@ private:
     TextureSet background_texture_{};
     TextureSet tree_texture_{};
     TextureSet bush_texture_{};
+    TextureSet squirrel_textures_{};
+    TextureSet acorn_textures_{};
     std::vector<Platform> platforms_;
     std::vector<SquirrelEnemy> squirrels_;
     

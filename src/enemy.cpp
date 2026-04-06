@@ -11,11 +11,18 @@ constexpr float kHurtCooldown = 0.3f;
 constexpr float kAcornSpeed = 280.0f;
 constexpr float kAcornGravity = 260.0f;
 constexpr int kAcornSize = 12;
+constexpr float kSquirrelAnimFps = 10.0f;
+constexpr float kAcornSpinFps = 12.0f;
 }
 
 void SquirrelEnemy::SetPosition(float x, float y) {
     x_ = x;
     y_ = y;
+}
+
+void SquirrelEnemy::SetTextures(const TextureSet& squirrel_textures, const TextureSet& acorn_textures) {
+    squirrel_textures_ = squirrel_textures;
+    acorn_textures_ = acorn_textures;
 }
 
 SDL_Rect SquirrelEnemy::GetBodyRect() const {
@@ -121,43 +128,67 @@ void SquirrelEnemy::Render(SDL_Renderer* renderer, float camera_x) const {
     SDL_Rect body = GetBodyRect();
     body.x -= static_cast<int>(camera_x);
 
-    if (hits_remaining_ > 0) {
-        SDL_SetRenderDrawColor(renderer, 150, 92, 48, 255);
+    if (!squirrel_textures_.Empty()) {
+        const Uint32 ticks = SDL_GetTicks();
+        const std::size_t frame_count = squirrel_textures_.frames.size();
+        const std::size_t frame_index =
+            static_cast<std::size_t>((ticks * kSquirrelAnimFps) / 1000.0f) % frame_count;
+        SDL_Texture* squirrel_texture = squirrel_textures_.frames[frame_index];
+        SDL_SetTextureColorMod(
+            squirrel_texture,
+            hits_remaining_ > 0 ? 255 : 110,
+            hits_remaining_ > 0 ? 255 : 110,
+            hits_remaining_ > 0 ? 255 : 110);
+        SDL_RenderCopy(renderer, squirrel_texture, nullptr, &body);
+        SDL_SetTextureColorMod(squirrel_texture, 255, 255, 255);
     } else {
-        SDL_SetRenderDrawColor(renderer, 80, 80, 80, 255);
+        if (hits_remaining_ > 0) {
+            SDL_SetRenderDrawColor(renderer, 150, 92, 48, 255);
+        } else {
+            SDL_SetRenderDrawColor(renderer, 80, 80, 80, 255);
+        }
+        SDL_RenderFillRect(renderer, &body);
+
+        SDL_SetRenderDrawColor(renderer, 225, 210, 185, 255);
+        SDL_Rect belly{
+            body.x + 8,
+            body.y + 10,
+            body.w - 16,
+            body.h - 12
+        };
+        SDL_RenderFillRect(renderer, &belly);
+
+        SDL_SetRenderDrawColor(renderer, 110, 60, 32, 255);
+        SDL_Rect tail{
+            body.x + body.w - 4,
+            body.y - 6,
+            16,
+            28
+        };
+        SDL_RenderFillRect(renderer, &tail);
     }
-    SDL_RenderFillRect(renderer, &body);
-
-    SDL_SetRenderDrawColor(renderer, 225, 210, 185, 255);
-    SDL_Rect belly{
-        body.x + 8,
-        body.y + 10,
-        body.w - 16,
-        body.h - 12
-    };
-    SDL_RenderFillRect(renderer, &belly);
-
-    SDL_SetRenderDrawColor(renderer, 110, 60, 32, 255);
-    SDL_Rect tail{
-        body.x + body.w - 4,
-        body.y - 6,
-        16,
-        28
-    };
-    SDL_RenderFillRect(renderer, &tail);
 
     for (const AcornProjectile& acorn : acorns_) {
         if (!acorn.active) {
             continue;
         }
 
-        SDL_SetRenderDrawColor(renderer, 122, 75, 34, 255);
         SDL_Rect acorn_rect{
             static_cast<int>(acorn.x - camera_x) - (kAcornSize / 2),
             static_cast<int>(acorn.y) - (kAcornSize / 2),
             kAcornSize,
             kAcornSize
         };
-        SDL_RenderFillRect(renderer, &acorn_rect);
+
+        if (!acorn_textures_.Empty()) {
+            const Uint32 ticks = SDL_GetTicks();
+            const std::size_t frame_count = acorn_textures_.frames.size();
+            const std::size_t frame_index =
+                static_cast<std::size_t>((ticks * kAcornSpinFps) / 1000.0f) % frame_count;
+            SDL_RenderCopy(renderer, acorn_textures_.frames[frame_index], nullptr, &acorn_rect);
+        } else {
+            SDL_SetRenderDrawColor(renderer, 122, 75, 34, 255);
+            SDL_RenderFillRect(renderer, &acorn_rect);
+        }
     }
 }
