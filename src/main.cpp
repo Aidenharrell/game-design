@@ -13,7 +13,6 @@ struct LoopingAudio {
 
 // SDL calls this function whenever the audio device needs more sound data.
 // This version loops the rain file forever by resetting to the start.
-// If you remove this callback, nothing will actually be played.
 void AudioCallback(void* userdata, Uint8* stream, int len) {
     LoopingAudio* audio = static_cast<LoopingAudio*>(userdata);
     SDL_memset(stream, 0, len);
@@ -50,7 +49,6 @@ bool LoadLoopingRain(LoopingAudio* audio, SDL_AudioSpec* device_spec) {
         return false;
     }
 
-    // Optional simplification:
     // This uses a plain relative path instead of building it with filesystem.
     const char* rain_path = "assets/sounds/rainsound.wav";
     SDL_AudioSpec source_spec{};

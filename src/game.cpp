@@ -211,6 +211,20 @@ bool Game::Init() {
     }
     heel_kick_textures_ = LoadTextureSet(renderer_, heel_kick_frames);
 
+    fs::path squirrel_shot_dir = assets_dir / "squirrelshot";
+    std::vector<fs::path> squirrel_frames = CollectFramesByPrefix(squirrel_shot_dir, "shoot");
+    if (squirrel_frames.empty()) {
+        squirrel_frames = CollectFramesByPrefix(assets_dir, "shoot");
+    }
+    squirrel_shot_textures_ = LoadTextureSet(renderer_, squirrel_frames);
+
+    fs::path acorn_dir = assets_dir / "acorn";
+    std::vector<fs::path> acorn_frames = CollectFramesByPrefix(acorn_dir, "acorn");
+    if (acorn_frames.empty()) {
+        acorn_frames = CollectFramesByPrefix(assets_dir, "acorn");
+    }
+    acorn_textures_ = LoadTextureSet(renderer_, acorn_frames);
+
     if (!idle_textures_.Empty()) {
         player_.SetIdleTextures(idle_textures_);
         std::cout << "Loaded idle frames: " << idle_textures_.frames.size() << "\n";
@@ -241,6 +255,16 @@ bool Game::Init() {
     } else {
         std::cerr << "No heel kick frames found in " << heel_kick_dir << " (or flipkick prefix)\n";
     }
+    if (!squirrel_shot_textures_.Empty()) {
+        std::cout << "Loaded squirrel frames: " << squirrel_shot_textures_.frames.size() << "\n";
+    } else {
+        std::cerr << "No squirrel shot frames found in " << squirrel_shot_dir << "\n";
+    }
+    if (!acorn_textures_.Empty()) {
+        std::cout << "Loaded acorn frames: " << acorn_textures_.frames.size() << "\n";
+    } else {
+        std::cerr << "No acorn frames found in " << acorn_dir << "\n";
+    }
 
     player_.SetGroundY(kWindowHeight - 40.0f);
     player_.SetPosition(120.0f, kWindowHeight - 80.0f);
@@ -255,10 +279,14 @@ bool Game::Init() {
 
     SquirrelEnemy lower_squirrel;
     lower_squirrel.SetPosition(360.0f, 400.0f);
+    lower_squirrel.SetSquirrelTextures(squirrel_shot_textures_);
+    lower_squirrel.SetAcornTextures(acorn_textures_);
     squirrels_.push_back(lower_squirrel);
 
     SquirrelEnemy upper_squirrel;
     upper_squirrel.SetPosition(640.0f, 150.0f);
+    upper_squirrel.SetSquirrelTextures(squirrel_shot_textures_);
+    upper_squirrel.SetAcornTextures(acorn_textures_);
     squirrels_.push_back(upper_squirrel);
 
     running_ = true;
@@ -357,6 +385,8 @@ void Game::Shutdown() {
     DestroyTextureSet(jump_textures_);
     DestroyTextureSet(punch_textures_);
     DestroyTextureSet(heel_kick_textures_);
+    DestroyTextureSet(squirrel_shot_textures_);
+    DestroyTextureSet(acorn_textures_);
     DestroyTextureSet(player_texture_);
 
     // Destroy renderer and window

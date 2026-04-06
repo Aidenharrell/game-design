@@ -26,6 +26,8 @@ private:
     TextureSet punch_textures_{};
     TextureSet jump_textures_{};
     TextureSet heel_kick_textures_{};
+    TextureSet squirrel_shot_textures_{};
+    TextureSet acorn_textures_{};
     std::vector<Platform> platforms_;
     std::vector<SquirrelEnemy> squirrels_;
     
