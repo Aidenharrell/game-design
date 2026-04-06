@@ -41,13 +41,12 @@ SDL_Rect SquirrelEnemy::GetBodyRect() const {
 }
 
 void SquirrelEnemy::Update(float dt, const SDL_Rect& player_rect) {
-    facing_left_ = player_rect.x > static_cast<int>(x_);
 
     if (hurt_cooldown_ > 0.0f) {
         hurt_cooldown_ = std::max(0.0f, hurt_cooldown_ - dt);
     }
 
-    if (!squirrel_textures_.Empty()) {
+    if (hits_remaining_ > 0 && !squirrel_textures_.Empty()) {
         animation_time_ += dt;
         const float cycle = kSquirrelFrameDuration * static_cast<float>(squirrel_textures_.frames.size());
         if (animation_time_ >= cycle) {
@@ -57,6 +56,7 @@ void SquirrelEnemy::Update(float dt, const SDL_Rect& player_rect) {
 
     if (hits_remaining_ > 0) {
         shot_timer_ -= dt;
+        facing_left_ = player_rect.x > static_cast<int>(x_);
         if (shot_timer_ <= 0.0f) {
             shot_timer_ = kShootCooldown;
 
@@ -156,7 +156,10 @@ void SquirrelEnemy::Render(SDL_Renderer* renderer, float camera_x) const {
     SDL_Texture* squirrel_texture = squirrel_textures_.First();
     if (!squirrel_textures_.Empty()) {
         const int frame_count = static_cast<int>(squirrel_textures_.frames.size());
-        const int frame_index = static_cast<int>(animation_time_ / kSquirrelFrameDuration) % frame_count;
+        int frame_index = 0;
+        if (hits_remaining_ > 0) {
+            frame_index = static_cast<int>(animation_time_ / kSquirrelFrameDuration) % frame_count;
+        }
         squirrel_texture = squirrel_textures_.frames[frame_index];
     }
 
