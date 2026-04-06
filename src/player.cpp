@@ -6,7 +6,7 @@
 static const float kMoveSpeed = 260.0f;
 static const float kJumpVelocity = -520.0f;
 static const float kGravity = 1400.0f;
-static const float kPunchDuration = 0.18f;
+static const float kPunchDuration = 0.3f;
 static const float kHeelKickDuration = 0.6f;
 static const float kIdleFrameDuration = 0.12f;
 static const float kWalkFrameDuration = 0.10f;
