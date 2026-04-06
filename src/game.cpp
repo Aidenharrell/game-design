@@ -347,7 +347,7 @@ void Game::Render() {
         SDL_RenderCopy(renderer_, background_texture_.frames[0], NULL, &bgRect);
     }
 
-    // Draw tree
+    // Draw trees
     if(!tree_texture_.Empty())
     {
         SDL_Rect treeRect;
@@ -385,13 +385,6 @@ void Game::Render() {
         {
             SDL_RenderCopy(renderer_, platform_textures_.frames[0], NULL, &screenRect);
         }
-    }
-
-    for (const auto& platform : platforms_) {
-    SDL_Rect screenRect = platform.rect;
-    screenRect.x -= static_cast<int>(camera_x_);
-
-    SDL_RenderFillRect(renderer_, &screenRect);
     }
 
     for (const SquirrelEnemy& squirrel : squirrels_) {
