@@ -6,7 +6,6 @@
 #include <string>
 #include <vector>
 #include <filesystem>
-#include <SDL_image.h>
 #include <SDL.h> 
 
 namespace fs = std::filesystem;
@@ -165,8 +164,8 @@ bool Game::Init() {
     fs::path assets_dir = ResolveAssetsDir();
 
     fs::path player_path = assets_dir / "Opanda.bmp";
-    player_texture_ = LoadTextureBMP(renderer_, player_path, &player_tex_w_, &player_tex_h_);
-    if (!player_texture_) {
+    player_texture_ = LoadSingleTexture(renderer_, player_path);
+    if (player_texture_.Empty()) {
         std::cerr << "Failed to load " << player_path << "\n";
     } else {
         player_.SetTexture(player_texture_);
@@ -406,38 +405,17 @@ void Game::Render() {
     SDL_RenderPresent(renderer_);
 }
 void Game::Shutdown() {
-    // Destroy idle textures
-    for (SDL_Texture* tex : idle_textures_) {
-        if (tex) SDL_DestroyTexture(tex);
-    }
-    idle_textures_.clear();
-
-    // Destroy walk textures
-    for (SDL_Texture* tex : walk_textures_) {
-        if (tex) SDL_DestroyTexture(tex);
-    }
-    walk_textures_.clear();
-    // Destroy jump textures
-    for (SDL_Texture* tex : jump_textures_) {
-        if (tex) SDL_DestroyTexture(tex);
-    }
-    jump_textures_.clear();
-    // Destroy punch textures
-    for (SDL_Texture* tex : punch_textures_) {
-        if (tex) SDL_DestroyTexture(tex);
-    }
-    punch_textures_.clear();
-    // Destroy heel kick textures
-    for (SDL_Texture* tex : heel_kick_textures_) {
-        if (tex) SDL_DestroyTexture(tex);
-    }
-    heel_kick_textures_.clear();
-
-    // Destroy player base texture
-    if (player_texture_) {
-        SDL_DestroyTexture(player_texture_);
-        player_texture_ = nullptr;
-    }
+    DestroyTextureSet(idle_textures_);
+    DestroyTextureSet(walk_textures_);
+    DestroyTextureSet(jump_textures_);
+    DestroyTextureSet(punch_textures_);
+    DestroyTextureSet(heel_kick_textures_);
+    DestroyTextureSet(player_texture_);
+    DestroyTextureSet(platform_textures_);
+    DestroyTextureSet(ground_texture_);
+    DestroyTextureSet(background_texture_);
+    DestroyTextureSet(tree_texture_);
+    DestroyTextureSet(bush_texture_);
 
     // Destroy renderer and window
     if (renderer_) {

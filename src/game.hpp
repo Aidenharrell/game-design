@@ -4,10 +4,7 @@
 #include "input.hpp"
 #include "player.hpp"
 #include "platform.hpp"
-<<<<<<< HEAD
 #include "enemy.hpp"
-=======
->>>>>>> 49b8015 ( takes off tex_h and tex_w uses texture set now)
 #include "texture_set.hpp"
 
 class Game {
@@ -29,14 +26,11 @@ private:
     TextureSet punch_textures_{};
     TextureSet jump_textures_{};
     TextureSet heel_kick_textures_{};
-<<<<<<< HEAD
     TextureSet platform_textures_{};
     TextureSet ground_texture_{};
     TextureSet background_texture_{};
     TextureSet tree_texture_{};
     TextureSet bush_texture_{};
-=======
->>>>>>> 49b8015 ( takes off tex_h and tex_w uses texture set now)
     std::vector<Platform> platforms_;
     std::vector<SquirrelEnemy> squirrels_;
     
