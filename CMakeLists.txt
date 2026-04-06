@@ -10,6 +10,7 @@ find_package(SDL2 CONFIG REQUIRED)
 
 add_executable(AngryPanda
     src/main.cpp
+    src/enemy.cpp
     src/game.cpp
     src/input.cpp
     src/player.cpp

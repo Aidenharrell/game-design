@@ -4,6 +4,7 @@
 #include "input.hpp"
 #include "player.hpp"
 #include "platform.hpp"
+#include "enemy.hpp"
 #include "texture_set.hpp"
 
 class Game {
@@ -26,6 +27,7 @@ private:
     TextureSet jump_textures_{};
     TextureSet heel_kick_textures_{};
     std::vector<Platform> platforms_;
+    std::vector<SquirrelEnemy> squirrels_;
     
 
     bool running_ = false;
