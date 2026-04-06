@@ -5,7 +5,9 @@
 #include <iostream>
 #include <string>
 #include <vector>
-#include <filesystem> 
+#include <filesystem>
+#include <SDL_image.h>
+#include <SDL.h> 
 
 namespace fs = std::filesystem;
 
@@ -164,6 +166,14 @@ bool Game::Init() {
 
     fs::path player_path = assets_dir / "Opanda.bmp";
     player_texture_ = LoadSingleTexture(renderer_, player_path);
+    fs::path platform_path = assets_dir / "branch.bmp";
+    platform_textures_ = LoadSingleTexture(renderer_, platform_path);
+    fs::path background_path = assets_dir / "Background.bmp";
+    background_texture_ = LoadSingleTexture(renderer_, background_path);
+    fs::path tree_path = assets_dir / "tree.bmp";
+    tree_texture_ = LoadSingleTexture(renderer_, tree_path);
+    fs::path bush_path = assets_dir / "bush.bmp";
+    bush_texture_ = LoadSingleTexture(renderer_, bush_path);
     if (player_texture_.Empty()) {
         std::cerr << "Failed to load " << player_path << "\n";
     } else {
@@ -248,10 +258,10 @@ bool Game::Init() {
     //platforms
     platforms_.push_back({ SDL_Rect{0, kWindowHeight - 40, 5000, 40} });  // ground
 
-    platforms_.push_back({ SDL_Rect{300, 400, 200, 20} });
-    platforms_.push_back({ SDL_Rect{600, 300, 180, 20} });
-    platforms_.push_back({ SDL_Rect{300, 250, 150, 20} });
-    platforms_.push_back({ SDL_Rect{600, 150, 150, 20} });
+    platforms_.push_back({ SDL_Rect{300, 400, 200, 50} });
+    platforms_.push_back({ SDL_Rect{600, 300, 200, 50} });
+    platforms_.push_back({ SDL_Rect{300, 250, 200, 50} });
+    platforms_.push_back({ SDL_Rect{600, 150, 200, 50} });
 
     SquirrelEnemy lower_squirrel;
     lower_squirrel.SetPosition(360.0f, 400.0f);
@@ -326,13 +336,56 @@ void Game::Render() {
     SDL_SetRenderDrawColor(renderer_, 25, 25, 30, 255);
     SDL_RenderClear(renderer_);
 
+    // Draw background
+    if(!background_texture_.Empty())
+    {
+        SDL_Rect bgRect;
+        bgRect.x = 0;
+        bgRect.y = 0;
+        bgRect.w = kWindowWidth;
+        bgRect.h = kWindowHeight;
+        SDL_RenderCopy(renderer_, background_texture_.frames[0], NULL, &bgRect);
+    }
+
+    // Draw tree
+    if(!tree_texture_.Empty())
+    {
+        SDL_Rect treeRect;
+        treeRect.x = 150 - static_cast<int>(camera_x_); // left/right
+        treeRect.y = 0;
+        treeRect.w = 220; // wider/narrower
+        treeRect.h = kWindowHeight;
+        SDL_RenderCopy(renderer_, tree_texture_.frames[0], NULL, &treeRect);
+    }
+    if(!tree_texture_.Empty())
+    {
+        SDL_Rect treeRect;
+        treeRect.x = 450 - static_cast<int>(camera_x_); // left/right
+        treeRect.y = 0;
+        treeRect.w = 225; // wider/narrower
+        treeRect.h = kWindowHeight;
+        SDL_RenderCopy(renderer_, tree_texture_.frames[0], NULL, &treeRect);
+    }
+
     // Draw ground
-    SDL_SetRenderDrawColor(renderer_, 60, 60, 70, 255);
+    SDL_SetRenderDrawColor(renderer_, 34, 139, 34, 255);
     SDL_Rect ground{0, kWindowHeight - 40, kWindowWidth, 40};
     SDL_RenderFillRect(renderer_, &ground);
 
     //Draw platforms
-    SDL_SetRenderDrawColor(renderer_, 100, 100, 120, 255);
+    for(const auto& platform : platforms_)
+    {
+        if(platform.rect.w > 1000) continue;
+        SDL_Rect screenRect;
+        screenRect.w = platform.rect.w;
+        screenRect.h = platform.rect.h;
+        screenRect.x = platform.rect.x - static_cast<int>(camera_x_);
+        screenRect.y = platform.rect.y;
+        if(!platform_textures_.Empty())
+        {
+            SDL_RenderCopy(renderer_, platform_textures_.frames[0], NULL, &screenRect);
+        }
+    }
 
     for (const auto& platform : platforms_) {
     SDL_Rect screenRect = platform.rect;
@@ -348,6 +401,22 @@ void Game::Render() {
     // Draw player
     player_.Render(renderer_, camera_x_);
 
+    // Draw bushes NEW
+    if(!bush_texture_.Empty())
+    {
+        for(int i = 0; i < 20; i++) // number of bushes
+        {
+            int xPos = i * 300; // spacing
+
+            SDL_Rect bushRect;
+            bushRect.x = xPos - static_cast<int>(camera_x_);
+            bushRect.y = kWindowHeight - 100; // height
+            bushRect.w = 70; // size
+            bushRect.h = 80;
+            SDL_RenderCopy(renderer_, bush_texture_.frames[0], NULL, &bushRect);
+        }
+    }
+
     // Present final frame
     SDL_RenderPresent(renderer_);
 }
@@ -358,6 +427,7 @@ void Game::Shutdown() {
     DestroyTextureSet(punch_textures_);
     DestroyTextureSet(heel_kick_textures_);
     DestroyTextureSet(player_texture_);
+    DestroyTextureSet(platform_textures_);
 
     // Destroy renderer and window
     if (renderer_) {
