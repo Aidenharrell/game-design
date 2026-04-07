@@ -245,7 +245,7 @@ bool Game::Init() {
     }
     heel_kick_textures_ = LoadTextureSet(renderer_, heel_kick_frames);
 
-    fs::path background_path;
+    
     background_texture_ = LoadSingleTexture(
         renderer_,
         {
@@ -254,7 +254,7 @@ bool Game::Init() {
         },
         &background_path);
 
-    fs::path tree_path;
+    
     tree_texture_ = LoadSingleTexture(
         renderer_,
         {
@@ -263,7 +263,7 @@ bool Game::Init() {
         },
         &tree_path);
 
-    fs::path bush_path;
+    
     bush_texture_ = LoadSingleTexture(
         renderer_,
         {
@@ -272,14 +272,14 @@ bool Game::Init() {
         },
         &bush_path);
 
-    fs::path branch_path;
+    
     platform_textures_ = LoadSingleTexture(
         renderer_,
         {
             assets_dir / "tree" / "branch.bmp",
             assets_dir / "branch.bmp"
         },
-        &branch_path);
+        &platform_path);
 
     std::vector<fs::path> squirrel_frames = CollectFramesByPrefix(
         std::vector<fs::path>{
