@@ -6,8 +6,8 @@
 static const float kMoveSpeed = 260.0f;
 static const float kJumpVelocity = -520.0f;
 static const float kGravity = 1400.0f;
-static const float kPunchDuration = 0.18f;
-static const float kHeelKickDuration = 0.22f;
+static const float kPunchDuration = 0.3f;
+static const float kHeelKickDuration = 0.6f;
 static const float kIdleFrameDuration = 0.12f;
 static const float kWalkFrameDuration = 0.10f;
 static const float kPunchFrameDuration = 0.06f;
@@ -42,8 +42,6 @@ void Player::SetJumpTextures(const TextureSet& textures) {
     jump_frame_time_ = 0.0f;
 }
 
-
-
 void Player::SetHeelKickTextures(const TextureSet& textures) {
     heel_kick_textures_ = textures;
     heel_kick_frame_ = 0;
@@ -64,15 +62,43 @@ void Player::Heal(int amount) {
     }
 }
 
+SDL_Rect Player::GetBodyRect() const {
+    int draw_w = base_texture_.width > 0 ? base_texture_.width : 48;
+    int draw_h = base_texture_.height > 0 ? base_texture_.height : 64;
+
+    return SDL_Rect{
+        static_cast<int>(x_),
+        static_cast<int>(y_) - draw_h,
+        draw_w,
+        draw_h
+    };
+}
+
+SDL_Rect Player::GetAttackRect() const {
+    if (punch_timer_ <= 0.0f && heel_kick_timer_ <= 0.0f) {
+        return SDL_Rect{0, 0, 0, 0};
+    }
+
+    SDL_Rect body = GetBodyRect();
+    const int reach = heel_kick_timer_ > 0.0f ? 54 : 36;
+    const int width = heel_kick_timer_ > 0.0f ? 54 : 44;
+    const int height = heel_kick_timer_ > 0.0f ? body.h / 2 : (body.h * 2) / 5;
+    const int y = heel_kick_timer_ > 0.0f ? body.y + body.h / 3 : body.y + body.h / 4;
+    const int x = facing_left_ ? body.x - reach : body.x + body.w;
+
+    return SDL_Rect{x, y, width, std::max(height, 20)};
+}
+
+void Player::ApplyKnockback(float vx, float vy) {
+    vx_ = vx;
+    vy_ = vy;
+    on_ground_ = false;
+}
+
 void Player::CheckPlatformCollisions(const std::vector<Platform>& platforms) {
     on_ground_ = false;
 
-    SDL_Rect playerRect{
-        static_cast<int>(x_),
-        static_cast<int>(y_) - base_texture_.height,
-        base_texture_.width,
-        base_texture_.height
-    };
+    SDL_Rect playerRect = GetBodyRect();
 
     for (const auto& platform : platforms) {
         SDL_Rect p = platform.rect;
@@ -82,7 +108,6 @@ void Player::CheckPlatformCollisions(const std::vector<Platform>& platforms) {
             playerRect.y + playerRect.h >= p.y &&
             playerRect.x + playerRect.w > p.x &&
             playerRect.x < p.x + p.w) {
-
             y_ = static_cast<float>(p.y);
             vy_ = 0.0f;
             on_ground_ = true;
@@ -132,7 +157,6 @@ void Player::Update(float dt, const InputState& input) {
         heel_kick_timer_ -= dt;
         if (heel_kick_timer_ < 0.0f) heel_kick_timer_ = 0.0f;
     }
-
     if (heel_kick_timer_ > 0.0f && !heel_kick_textures_.Empty()) {
         heel_kick_frame_time_ += dt;
         if (heel_kick_frame_time_ >= kHeelKickFrameDuration) {
@@ -147,7 +171,6 @@ void Player::Update(float dt, const InputState& input) {
         punch_timer_ -= dt;
         if (punch_timer_ < 0.0f) punch_timer_ = 0.0f;
     }
-
     if (punch_timer_ > 0.0f && !punch_textures_.Empty()) {
         punch_frame_time_ += dt;
         if (punch_frame_time_ >= kPunchFrameDuration) {
@@ -203,7 +226,6 @@ void Player::Render(SDL_Renderer* renderer, float camera_x) const {
     if (draw_h <= 0) draw_h = 64;
 
     SDL_Texture* render_texture = base_texture_.First();
-
     if (heel_kick_timer_ > 0.0f && !heel_kick_textures_.Empty()) {
         render_texture = heel_kick_textures_.frames[heel_kick_frame_];
         draw_w = heel_kick_textures_.width;
@@ -232,7 +254,6 @@ void Player::Render(SDL_Renderer* renderer, float camera_x) const {
         draw_w,
         draw_h
     };
-
     if (render_texture) {
         const SDL_RendererFlip flip = facing_left_ ? SDL_FLIP_HORIZONTAL : SDL_FLIP_NONE;
         SDL_RenderCopyEx(renderer, render_texture, nullptr, &body, 0.0, nullptr, flip);

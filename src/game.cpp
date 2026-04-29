@@ -1,29 +1,22 @@
 #include "game.hpp"
 #include "platform.hpp"
+
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <filesystem>
 #include <iostream>
+#include <random>
 #include <string>
 #include <vector>
-#include <filesystem>
-#include <random>
 
 namespace fs = std::filesystem;
 
-static const int kWindowWidth = 960;
-static const int kWindowHeight = 540;
-static const int kLevelWidth = 5200;
-
-
-static const float kSquirrelShootMin = 1.8f;
-static const float kSquirrelShootMax = 3.1f;
-static const float kSquirrelShootAnimFrameDuration = 0.06f;
-static const float kAcornSpeed = 420.0f;
-static const float kAcornGravity = 240.0f;
-static const float kAcornAnimFrameDuration = 0.08f;
-static const float kPlayerHitCooldown = 0.9f;
-static const float kSquirrelAggroRange = 520.0f;
+namespace {
+constexpr int kWindowWidth = 960;
+constexpr int kWindowHeight = 540;
+constexpr int kLevelWidth = 5200;
+constexpr float kPlayerHitCooldown = 0.9f;
 
 struct TreeVisual {
     int x = 0;
@@ -33,9 +26,8 @@ struct TreeVisual {
     int canopy_h = 0;
 };
 
-static SDL_Texture* LoadTextureBMP(SDL_Renderer* renderer, const fs::path& path, int* out_w, int* out_h, bool use_black_colorkey) {
+SDL_Texture* LoadTextureBMP(SDL_Renderer* renderer, const fs::path& path, int* out_w, int* out_h, bool use_black_colorkey) {
     if (!fs::exists(path)) {
-        std::cerr << "File not found: " << path << "\n";
         return nullptr;
     }
 
@@ -59,7 +51,7 @@ static SDL_Texture* LoadTextureBMP(SDL_Renderer* renderer, const fs::path& path,
     return texture;
 }
 
-static TextureSet LoadSingleTexture(SDL_Renderer* renderer, const fs::path& path, bool use_black_colorkey) {
+TextureSet LoadSingleTexture(SDL_Renderer* renderer, const fs::path& path, bool use_black_colorkey) {
     TextureSet texture_set;
     SDL_Texture* texture = LoadTextureBMP(renderer, path, &texture_set.width, &texture_set.height, use_black_colorkey);
     if (texture) {
@@ -68,7 +60,17 @@ static TextureSet LoadSingleTexture(SDL_Renderer* renderer, const fs::path& path
     return texture_set;
 }
 
-static TextureSet LoadTextureSet(SDL_Renderer* renderer, const std::vector<fs::path>& frame_paths, bool use_black_colorkey) {
+TextureSet LoadSingleTexture(SDL_Renderer* renderer, const std::vector<fs::path>& candidate_paths, bool use_black_colorkey) {
+    for (const fs::path& candidate : candidate_paths) {
+        TextureSet texture_set = LoadSingleTexture(renderer, candidate, use_black_colorkey);
+        if (!texture_set.Empty()) {
+            return texture_set;
+        }
+    }
+    return {};
+}
+
+TextureSet LoadTextureSet(SDL_Renderer* renderer, const std::vector<fs::path>& frame_paths, bool use_black_colorkey) {
     TextureSet texture_set;
     for (const fs::path& frame_path : frame_paths) {
         int frame_w = 0;
@@ -87,7 +89,7 @@ static TextureSet LoadTextureSet(SDL_Renderer* renderer, const std::vector<fs::p
     return texture_set;
 }
 
-static void DestroyTextureSet(TextureSet& texture_set) {
+void DestroyTextureSet(TextureSet& texture_set) {
     for (SDL_Texture* texture : texture_set.frames) {
         if (texture) {
             SDL_DestroyTexture(texture);
@@ -98,7 +100,7 @@ static void DestroyTextureSet(TextureSet& texture_set) {
     texture_set.height = 0;
 }
 
-static fs::path ResolveAssetsDir() {
+fs::path ResolveAssetsDir() {
     fs::path exe_dir = fs::current_path();
     if (char* base = SDL_GetBasePath()) {
         exe_dir = fs::path(base);
@@ -117,17 +119,20 @@ static fs::path ResolveAssetsDir() {
             return path;
         }
     }
+
     return candidates[0];
 }
 
-static std::vector<fs::path> CollectFramesByPrefix(const fs::path& dir, const std::string& prefix) {
+std::vector<fs::path> CollectFramesByPrefix(const fs::path& dir, const std::string& prefix) {
     std::vector<fs::path> frames;
     if (!fs::exists(dir) || !fs::is_directory(dir)) {
         return frames;
     }
 
     for (const fs::directory_entry& entry : fs::directory_iterator(dir)) {
-        if (!entry.is_regular_file()) continue;
+        if (!entry.is_regular_file()) {
+            continue;
+        }
 
         const fs::path path = entry.path();
         std::string stem = path.stem().string();
@@ -142,8 +147,8 @@ static std::vector<fs::path> CollectFramesByPrefix(const fs::path& dir, const st
         }
     }
 
-    auto frame_index = [&](const fs::path& p) -> int {
-        const std::string stem = p.stem().string();
+    auto frame_index = [&](const fs::path& path) -> int {
+        const std::string stem = path.stem().string();
         std::size_t i = prefix.size();
         int value = 0;
         bool has_digits = false;
@@ -158,22 +163,34 @@ static std::vector<fs::path> CollectFramesByPrefix(const fs::path& dir, const st
     std::sort(frames.begin(), frames.end(), [&](const fs::path& a, const fs::path& b) {
         const int ai = frame_index(a);
         const int bi = frame_index(b);
-        if (ai != bi) return ai < bi;
+        if (ai != bi) {
+            return ai < bi;
+        }
         return a.filename().string() < b.filename().string();
     });
 
     return frames;
 }
 
-static void DrawHeart(SDL_Renderer* renderer, int x, int y, int scale, bool filled) {
+std::vector<fs::path> CollectFramesByPrefix(const std::vector<fs::path>& dirs, const std::string& prefix) {
+    for (const fs::path& dir : dirs) {
+        std::vector<fs::path> frames = CollectFramesByPrefix(dir, prefix);
+        if (!frames.empty()) {
+            return frames;
+        }
+    }
+    return {};
+}
+
+void DrawHeart(SDL_Renderer* renderer, int x, int y, int scale, bool filled) {
     static const int pattern[7][8] = {
-        {0,1,1,0,0,1,1,0},
-        {1,1,1,1,1,1,1,1},
-        {1,1,1,1,1,1,1,1},
-        {0,1,1,1,1,1,1,0},
-        {0,0,1,1,1,1,0,0},
-        {0,0,0,1,1,0,0,0},
-        {0,0,0,0,0,0,0,0}
+        {0, 1, 1, 0, 0, 1, 1, 0},
+        {1, 1, 1, 1, 1, 1, 1, 1},
+        {1, 1, 1, 1, 1, 1, 1, 1},
+        {0, 1, 1, 1, 1, 1, 1, 0},
+        {0, 0, 1, 1, 1, 1, 0, 0},
+        {0, 0, 0, 1, 1, 0, 0, 0},
+        {0, 0, 0, 0, 0, 0, 0, 0}
     };
 
     if (filled) {
@@ -197,23 +214,18 @@ static void DrawHeart(SDL_Renderer* renderer, int x, int y, int scale, bool fill
     }
 }
 
-static void DrawFilledCircle(SDL_Renderer* renderer, int cx, int cy, int radius) {
+void DrawFilledCircle(SDL_Renderer* renderer, int cx, int cy, int radius) {
     for (int dy = -radius; dy <= radius; ++dy) {
         int dx_limit = static_cast<int>(std::sqrt(radius * radius - dy * dy));
         SDL_RenderDrawLine(renderer, cx - dx_limit, cy + dy, cx + dx_limit, cy + dy);
     }
 }
 
-static bool RectsIntersect(const SDL_Rect& a, const SDL_Rect& b) {
+bool RectsIntersect(const SDL_Rect& a, const SDL_Rect& b) {
     return SDL_HasIntersection(&a, &b) == SDL_TRUE;
 }
 
-static float RandomRange(std::mt19937& rng, float low, float high) {
-    std::uniform_real_distribution<float> dist(low, high);
-    return dist(rng);
-}
-
-static void GenerateForestPlatforms(std::vector<Platform>& platforms) {
+void GenerateForestPlatforms(std::vector<Platform>& platforms) {
     platforms.clear();
 
     const int ground_y = kWindowHeight - 40;
@@ -225,7 +237,6 @@ static void GenerateForestPlatforms(std::vector<Platform>& platforms) {
     platforms.push_back({ SDL_Rect{660, 290, 140, 18} });
 
     std::mt19937 rng(4000);
-
     int tree_x = 950;
     std::uniform_int_distribution<int> trunk_gap(240, 310);
     std::uniform_int_distribution<int> low_y(330, 390);
@@ -236,15 +247,13 @@ static void GenerateForestPlatforms(std::vector<Platform>& platforms) {
     std::uniform_int_distribution<int> pattern_dist(0, 2);
 
     while (tree_x < kLevelWidth - 220) {
-        int pattern = pattern_dist(rng);
-
-        int branch1_y = low_y(rng);
-        int branch2_y = mid_y(rng);
-        int branch3_y = high_y(rng);
-
-        int w1 = width_dist(rng);
-        int w2 = width_dist(rng);
-        int w3 = width_dist(rng);
+        const int pattern = pattern_dist(rng);
+        const int branch1_y = low_y(rng);
+        const int branch2_y = mid_y(rng);
+        const int branch3_y = high_y(rng);
+        const int w1 = width_dist(rng);
+        const int w2 = width_dist(rng);
+        const int w3 = width_dist(rng);
 
         if (pattern == 0) {
             platforms.push_back({ SDL_Rect{tree_x - 55 + offset_dist(rng), branch1_y, w1, 18} });
@@ -268,7 +277,7 @@ static void GenerateForestPlatforms(std::vector<Platform>& platforms) {
     platforms.push_back({ SDL_Rect{5030, 280, 135, 18} });
 }
 
-static std::vector<TreeVisual> BuildTreeVisualsFromPlatforms(const std::vector<Platform>& platforms) {
+std::vector<TreeVisual> BuildTreeVisualsFromPlatforms(const std::vector<Platform>& platforms) {
     std::vector<TreeVisual> trees;
     const int ground_y = kWindowHeight - 40;
 
@@ -277,13 +286,13 @@ static std::vector<TreeVisual> BuildTreeVisualsFromPlatforms(const std::vector<P
             continue;
         }
 
-        int trunk_center_x = platform.rect.x + platform.rect.w / 2;
+        const int trunk_center_x = platform.rect.x + platform.rect.w / 2;
         bool merged = false;
 
         for (auto& tree : trees) {
             if (std::abs(tree.x - trunk_center_x) < 95) {
-                int branch_top = platform.rect.y;
-                int desired_h = ground_y - branch_top + 65;
+                const int branch_top = platform.rect.y;
+                const int desired_h = ground_y - branch_top + 65;
                 if (desired_h > tree.trunk_h) {
                     tree.trunk_h = desired_h;
                     tree.canopy_h = desired_h / 2;
@@ -307,40 +316,34 @@ static std::vector<TreeVisual> BuildTreeVisualsFromPlatforms(const std::vector<P
     return trees;
 }
 
-static void PopulateVines(const std::vector<Platform>& platforms, std::vector<Vine>& vines) {
+void PopulateVines(const std::vector<Platform>& platforms, std::vector<Vine>& vines) {
     vines.clear();
     std::mt19937 rng(6060);
-
     std::uniform_int_distribution<int> chance_dist(0, 99);
     std::uniform_int_distribution<int> side_dist(0, 1);
     std::uniform_int_distribution<int> extra_len_dist(0, 70);
 
-    for (const Platform& p : platforms) {
-        if (p.rect.h >= 30) continue;    
-        if (p.rect.x < 700) continue;     
-        if (p.rect.w < 100) continue;
-        if (chance_dist(rng) >= 30) continue;
+    for (const Platform& platform : platforms) {
+        if (platform.rect.h >= 30 || platform.rect.x < 700 || platform.rect.w < 100) {
+            continue;
+        }
+        if (chance_dist(rng) >= 30) {
+            continue;
+        }
 
-        Vine v;
-
-        int offset = (side_dist(rng) == 0) ? -18 : 18;
-
-        int vine_x = p.rect.x + p.rect.w / 2 + offset;
-        int vine_y = p.rect.y + 6;
-
+        Vine vine;
+        const int offset = side_dist(rng) == 0 ? -18 : 18;
+        const int vine_x = platform.rect.x + platform.rect.w / 2 + offset;
+        const int vine_y = platform.rect.y + 6;
         int vine_h = 110 + extra_len_dist(rng);
-
-        if (p.rect.y < 260) {
+        if (platform.rect.y < 260) {
             vine_h += 40;
         }
 
-        int max_h = (kWindowHeight - 40) - vine_y;
-        if (vine_h > max_h) {
-            vine_h = max_h;
-        }
-
-        v.rect = SDL_Rect{ vine_x, vine_y, 6, vine_h };
-        vines.push_back(v);
+        const int max_h = (kWindowHeight - 40) - vine_y;
+        vine_h = std::min(vine_h, max_h);
+        vine.rect = SDL_Rect{ vine_x, vine_y, 6, vine_h };
+        vines.push_back(vine);
 
         if (vines.size() >= 18) {
             break;
@@ -348,28 +351,57 @@ static void PopulateVines(const std::vector<Platform>& platforms, std::vector<Vi
     }
 }
 
-static void PopulateSquirrels(const std::vector<Platform>& platforms, std::vector<SquirrelEnemy>& squirrels) {
+void PopulateSpikes(const std::vector<Platform>& platforms, std::vector<SpikeTrap>& spikes) {
+    spikes.clear();
+    std::mt19937 rng(7070);
+    std::uniform_int_distribution<int> chance_dist(0, 99);
+
+    for (const Platform& platform : platforms) {
+        if (platform.rect.h >= 30 || platform.rect.x < 900 || platform.rect.w < 90) {
+            continue;
+        }
+        if (chance_dist(rng) >= 18) {
+            continue;
+        }
+
+        constexpr int spike_w = 34;
+        constexpr int spike_h = 26;
+        SpikeTrap spike;
+        spike.rect = SDL_Rect{
+            platform.rect.x + (platform.rect.w / 2) - (spike_w / 2),
+            platform.rect.y - spike_h,
+            spike_w,
+            spike_h
+        };
+        spikes.push_back(spike);
+
+        if (spikes.size() >= 10) {
+            break;
+        }
+    }
+}
+
+void PopulateSquirrels(const std::vector<Platform>& platforms,
+                       std::vector<SquirrelEnemy>& squirrels,
+                       const TextureSet& squirrel_textures,
+                       const TextureSet& acorn_textures) {
     squirrels.clear();
     std::mt19937 rng(2026);
+    std::uniform_int_distribution<int> chance_dist(0, 99);
 
-    for (const Platform& p : platforms) {
-        if (p.rect.h >= 30) continue;
-        if (p.rect.y > 340) continue;
-        if (p.rect.x < 1100) continue;
-        if (p.rect.x > 4700) continue;
+    for (const Platform& platform : platforms) {
+        if (platform.rect.h >= 30 || platform.rect.y > 340 || platform.rect.x < 1100 || platform.rect.x > 4700) {
+            continue;
+        }
+        if (chance_dist(rng) >= 18) {
+            continue;
+        }
 
-        std::uniform_int_distribution<int> chance_dist(0, 99);
-        if (chance_dist(rng) >= 18) continue;
-
-        SquirrelEnemy s;
-        s.x = static_cast<float>(p.rect.x + p.rect.w / 2);
-        s.y = static_cast<float>(p.rect.y);
-        s.shoot_timer = RandomRange(rng, kSquirrelShootMin, kSquirrelShootMax);
-        s.shoot_anim_timer = 0.0f;
-        s.shoot_frame = 0;
-        s.facing_left = true;
-        s.shooting = false;
-        squirrels.push_back(s);
+        SquirrelEnemy squirrel;
+        squirrel.SetPosition(static_cast<float>(platform.rect.x + platform.rect.w / 2), static_cast<float>(platform.rect.y));
+        squirrel.SetSquirrelTextures(squirrel_textures);
+        squirrel.SetAcornTextures(acorn_textures);
+        squirrels.push_back(squirrel);
 
         if (squirrels.size() >= 6) {
             break;
@@ -377,34 +409,38 @@ static void PopulateSquirrels(const std::vector<Platform>& platforms, std::vecto
     }
 }
 
-static void PopulateSpikes(const std::vector<Platform>& platforms, std::vector<SpikeTrap>& spikes) {
-    spikes.clear();
-    std::mt19937 rng(7070);
+void DrawDecorativeApples(SDL_Renderer* renderer,
+                          SDL_Texture* apple_texture,
+                          int apple_w,
+                          int apple_h,
+                          const std::vector<TreeVisual>& trees,
+                          float camera_x) {
+    if (!apple_texture || apple_w <= 0 || apple_h <= 0) {
+        return;
+    }
 
-    for (const Platform& p : platforms) {
-        if (p.rect.h >= 30) continue;
-        if (p.rect.x < 900) continue;
-        if (p.rect.w < 90) continue;
+    for (std::size_t i = 0; i < trees.size(); ++i) {
+        if (i % 2 != 0) {
+            continue;
+        }
 
-        std::uniform_int_distribution<int> chance_dist(0, 99);
-        if (chance_dist(rng) >= 18) continue;
+        const TreeVisual& tree = trees[i];
+        const int screen_x = tree.x - static_cast<int>(camera_x);
+        const int trunk_top = kWindowHeight - 40 - tree.trunk_h;
+        const int apple_y = trunk_top + 34 + static_cast<int>((i % 3) * 6);
+        const int offsets[3] = { -26, 6, 24 };
 
-        SpikeTrap spike;
-        int spike_w = 34;
-        int spike_h = 26;
-
-        spike.rect = SDL_Rect{
-            p.rect.x + (p.rect.w / 2) - (spike_w / 2),
-            p.rect.y - spike_h,
-            spike_w,
-            spike_h
-        };
-
-        spikes.push_back(spike);
-        if (spikes.size() >= 10) {
-            break;
+        for (int offset : offsets) {
+            SDL_Rect dest{
+                screen_x + offset,
+                apple_y + (offset == 6 ? 10 : 0),
+                apple_w,
+                apple_h
+            };
+            SDL_RenderCopy(renderer, apple_texture, nullptr, &dest);
         }
     }
+}
 }
 
 bool Game::Init() {
@@ -428,38 +464,59 @@ bool Game::Init() {
         return false;
     }
 
-    fs::path assets_dir = ResolveAssetsDir();
+    const fs::path assets_dir = ResolveAssetsDir();
 
     player_texture_ = LoadSingleTexture(renderer_, assets_dir / "Opanda.bmp", false);
+    background_texture_ = LoadSingleTexture(
+        renderer_,
+        {
+            assets_dir / "background" / "Background.bmp",
+            assets_dir / "Background.bmp"
+        },
+        false);
+    apple_texture_ = LoadSingleTexture(
+        renderer_,
+        {
+            assets_dir / "tree" / "apple.bmp",
+            assets_dir / "apple.bmp"
+        },
+        true);
+    spike_texture_ = LoadSingleTexture(
+        renderer_,
+        {
+            assets_dir / "spikes" / "spike1.bmp",
+            assets_dir / "spike1.bmp"
+        },
+        true);
 
-    std::vector<fs::path> idle_frames = CollectFramesByPrefix(assets_dir / "idel", "idel");
-    if (idle_frames.empty()) idle_frames = CollectFramesByPrefix(assets_dir, "idel");
-    idle_textures_ = LoadTextureSet(renderer_, idle_frames, false);
-
-    std::vector<fs::path> walk_frames = CollectFramesByPrefix(assets_dir / "walk", "walk");
-    if (walk_frames.empty()) walk_frames = CollectFramesByPrefix(assets_dir / "walk", "rewalk");
-    if (walk_frames.empty()) walk_frames = CollectFramesByPrefix(assets_dir, "rewalk");
-    walk_textures_ = LoadTextureSet(renderer_, walk_frames, false);
-
-    std::vector<fs::path> jump_frames = CollectFramesByPrefix(assets_dir / "jump", "jump");
-    if (jump_frames.empty()) jump_frames = CollectFramesByPrefix(assets_dir, "jump");
-    jump_textures_ = LoadTextureSet(renderer_, jump_frames, false);
-
-    std::vector<fs::path> punch_frames = CollectFramesByPrefix(assets_dir / "punch", "punch");
-    if (punch_frames.empty()) punch_frames = CollectFramesByPrefix(assets_dir, "punch");
-    punch_textures_ = LoadTextureSet(renderer_, punch_frames, false);
-
-    std::vector<fs::path> heel_kick_frames = CollectFramesByPrefix(assets_dir / "heel", "heel");
-    if (heel_kick_frames.empty()) heel_kick_frames = CollectFramesByPrefix(assets_dir, "heel");
-    heel_kick_textures_ = LoadTextureSet(renderer_, heel_kick_frames, false);
-
-    std::vector<fs::path> squirrel_frames = CollectFramesByPrefix(assets_dir / "squirrelshot", "shoot");
-    squirrel_textures_ = LoadTextureSet(renderer_, squirrel_frames, true);
-
-    std::vector<fs::path> acorn_frames = CollectFramesByPrefix(assets_dir / "acorn", "acorn");
-    acorn_textures_ = LoadTextureSet(renderer_, acorn_frames, true);
-
-    spike_texture_ = LoadSingleTexture(renderer_, assets_dir / "spikes" / "spike1.bmp", true);
+    idle_textures_ = LoadTextureSet(
+        renderer_,
+        CollectFramesByPrefix({ assets_dir / "idel", assets_dir }, "idel"),
+        false);
+    walk_textures_ = LoadTextureSet(
+        renderer_,
+        CollectFramesByPrefix({ assets_dir / "walk", assets_dir }, "rewalk"),
+        false);
+    jump_textures_ = LoadTextureSet(
+        renderer_,
+        CollectFramesByPrefix({ assets_dir / "jump", assets_dir }, "jump"),
+        false);
+    punch_textures_ = LoadTextureSet(
+        renderer_,
+        CollectFramesByPrefix({ assets_dir / "punch", assets_dir }, "punch"),
+        false);
+    heel_kick_textures_ = LoadTextureSet(
+        renderer_,
+        CollectFramesByPrefix({ assets_dir / "heel", assets_dir }, "heel"),
+        false);
+    squirrel_textures_ = LoadTextureSet(
+        renderer_,
+        CollectFramesByPrefix({ assets_dir / "squirrelshot", assets_dir }, "shoot"),
+        true);
+    acorn_textures_ = LoadTextureSet(
+        renderer_,
+        CollectFramesByPrefix({ assets_dir / "acorn", assets_dir }, "acorn"),
+        true);
 
     if (!player_texture_.Empty()) player_.SetTexture(player_texture_);
     if (!idle_textures_.Empty()) player_.SetIdleTextures(idle_textures_);
@@ -472,9 +529,9 @@ bool Game::Init() {
     player_.SetPosition(120.0f, kWindowHeight - 80.0f);
 
     GenerateForestPlatforms(platforms_);
-    PopulateSquirrels(platforms_, squirrels_);
-    PopulateSpikes(platforms_, spikes_);
     PopulateVines(platforms_, vines_);
+    PopulateSpikes(platforms_, spikes_);
+    PopulateSquirrels(platforms_, squirrels_, squirrel_textures_, acorn_textures_);
 
     running_ = true;
     return true;
@@ -487,8 +544,8 @@ void Game::Run() {
     while (running_) {
         last = now;
         now = SDL_GetPerformanceCounter();
-        double freq = static_cast<double>(SDL_GetPerformanceFrequency());
-        float dt = static_cast<float>((now - last) / freq);
+        const double freq = static_cast<double>(SDL_GetPerformanceFrequency());
+        const float dt = static_cast<float>((now - last) / freq);
 
         HandleEvents();
         Update(dt);
@@ -497,110 +554,36 @@ void Game::Run() {
 }
 
 void Game::HandleEvents() {
-    SDL_Event e;
+    SDL_Event event;
     input_.ClearFrame();
 
-    while (SDL_PollEvent(&e)) {
-        if (e.type == SDL_QUIT) {
+    while (SDL_PollEvent(&event)) {
+        if (event.type == SDL_QUIT) {
             running_ = false;
-        } else if (e.type == SDL_KEYDOWN && !e.key.repeat) {
-            input_.OnKeyDown(e.key.keysym.sym);
-            if (e.key.keysym.sym == SDLK_h) {
+        } else if (event.type == SDL_KEYDOWN && !event.key.repeat) {
+            input_.OnKeyDown(event.key.keysym.sym);
+            if (event.key.keysym.sym == SDLK_h) {
                 player_.TakeDamage(1);
             }
-        } else if (e.type == SDL_KEYUP) {
-            input_.OnKeyUp(e.key.keysym.sym);
+        } else if (event.type == SDL_KEYUP) {
+            input_.OnKeyUp(event.key.keysym.sym);
         }
     }
 }
 
 void Game::Update(float dt) {
-    static std::mt19937 squirrel_rng(4242);
-
     player_.Update(dt, input_);
     player_.CheckPlatformCollisions(platforms_);
 
     if (player_damage_cooldown_ > 0.0f) {
-        player_damage_cooldown_ -= dt;
-        if (player_damage_cooldown_ < 0.0f) {
-            player_damage_cooldown_ = 0.0f;
-        }
+        player_damage_cooldown_ = std::max(0.0f, player_damage_cooldown_ - dt);
     }
 
-    for (auto& squirrel : squirrels_) {
-        float dx = player_.GetX() - squirrel.x;
-
-        if (std::fabs(dx) > 18.0f) {
-            squirrel.facing_left = (dx > 0.0f);
-        }
-
-        bool player_in_range = std::fabs(dx) < kSquirrelAggroRange;
-
-        if (!squirrel.shooting) {
-            squirrel.shoot_timer -= dt;
-
-            if (player_in_range && squirrel.shoot_timer <= 0.0f) {
-                squirrel.shooting = true;
-                squirrel.shoot_frame = 0;
-                squirrel.shoot_anim_timer = 0.0f;
-            } else if (!player_in_range && squirrel.shoot_timer <= 0.0f) {
-                squirrel.shoot_timer = RandomRange(squirrel_rng, 0.6f, 1.4f);
-            }
-        }
-
-        if (squirrel.shooting && !squirrel_textures_.Empty()) {
-            squirrel.shoot_anim_timer += dt;
-
-            if (squirrel.shoot_anim_timer >= kSquirrelShootAnimFrameDuration) {
-                squirrel.shoot_anim_timer = 0.0f;
-                ++squirrel.shoot_frame;
-
-                if (squirrel.shoot_frame >= static_cast<int>(squirrel_textures_.frames.size())) {
-                    squirrel.shooting = false;
-                    squirrel.shoot_frame = 0;
-                    squirrel.shoot_timer = RandomRange(squirrel_rng, kSquirrelShootMin, kSquirrelShootMax);
-
-                    AcornProjectile acorn;
-
-                    acorn.x = squirrel.x + (squirrel.facing_left ? -16.0f : 16.0f);
-                    acorn.y = squirrel.y - 34.0f;
-
-                    float target_x = player_.GetX() + player_.GetWidth() * 0.5f;
-                    float target_y = player_.GetY() - player_.GetHeight() * 0.5f;
-
-                    float aim_dx = target_x - acorn.x;
-                    float aim_dy = target_y - acorn.y;
-
-                    float len = std::sqrt(aim_dx * aim_dx + aim_dy * aim_dy);
-                    if (len < 1.0f) {
-                        len = 1.0f;
-                    }
-
-                    aim_dx /= len;
-                    aim_dy /= len;
-
-                    acorn.vx = aim_dx * kAcornSpeed;
-                    acorn.vy = aim_dy * kAcornSpeed - 40.0f;
-
-                    acorn.anim_timer = 0.0f;
-                    acorn.anim_frame = 0;
-                    acorn.active = true;
-                    acorns_.push_back(acorn);
-                }
-            }
-        }
-    }
-
-    SDL_Rect player_rect{
-        static_cast<int>(player_.GetX()) + 8,
-        static_cast<int>(player_.GetY()) - player_.GetHeight() + 6,
-        player_.GetWidth() - 16,
-        player_.GetHeight() - 8
-    };
+    SDL_Rect player_rect = player_.GetBodyRect();
+    const SDL_Rect attack_rect = player_.GetAttackRect();
 
     bool on_vine = false;
-
-    for (const auto& vine : vines_) {
+    for (const Vine& vine : vines_) {
         SDL_Rect vine_hitbox = vine.rect;
         vine_hitbox.x -= 8;
         vine_hitbox.w += 16;
@@ -621,7 +604,24 @@ void Game::Update(float dt) {
         }
     }
 
-    for (const auto& spike : spikes_) {
+    for (SquirrelEnemy& squirrel : squirrels_) {
+        squirrel.Update(dt, player_rect);
+
+        if (attack_rect.w > 0 && attack_rect.h > 0) {
+            squirrel.TryTakeHit(attack_rect);
+        }
+
+        float knockback_x = 0.0f;
+        if (player_damage_cooldown_ <= 0.0f &&
+            squirrel.CheckProjectileHitPlayer(player_rect, &knockback_x)) {
+            player_.TakeDamage(1);
+            player_.ApplyKnockback(knockback_x, -220.0f);
+            player_damage_cooldown_ = kPlayerHitCooldown;
+        }
+    }
+
+    player_rect = player_.GetBodyRect();
+    for (const SpikeTrap& spike : spikes_) {
         SDL_Rect spike_hitbox = spike.rect;
         spike_hitbox.x += 10;
         spike_hitbox.w -= 20;
@@ -634,81 +634,37 @@ void Game::Update(float dt) {
         }
     }
 
-    for (auto& acorn : acorns_) {
-        if (!acorn.active) continue;
-
-        acorn.vy += kAcornGravity * dt;
-        acorn.x += acorn.vx * dt;
-        acorn.y += acorn.vy * dt;
-
-        if (!acorn_textures_.Empty()) {
-            acorn.anim_timer += dt;
-            if (acorn.anim_timer >= kAcornAnimFrameDuration) {
-                acorn.anim_timer = 0.0f;
-                acorn.anim_frame = (acorn.anim_frame + 1) % static_cast<int>(acorn_textures_.frames.size());
-            }
-        }
-
-        SDL_Rect acorn_rect{
-            static_cast<int>(acorn.x) - 10,
-            static_cast<int>(acorn.y) - 10,
-            20,
-            20
-        };
-
-        if (RectsIntersect(acorn_rect, player_rect)) {
-            acorn.active = false;
-            if (player_damage_cooldown_ <= 0.0f) {
-                player_.TakeDamage(1);
-                player_damage_cooldown_ = kPlayerHitCooldown;
-            }
-            continue;
-        }
-
-        if (acorn.x < -50.0f || acorn.x > static_cast<float>(kLevelWidth + 50) ||
-            acorn.y > static_cast<float>(kWindowHeight + 120)) {
-            acorn.active = false;
-            continue;
-        }
-
-        if (acorn.y >= (kWindowHeight - 40)) {
-            acorn.active = false;
-        }
-    }
-
-    acorns_.erase(
-        std::remove_if(acorns_.begin(), acorns_.end(),
-            [](const AcornProjectile& a) { return !a.active; }),
-        acorns_.end()
-    );
-
     camera_x_ = player_.GetX() - (kWindowWidth / 2.0f);
     if (camera_x_ < 0.0f) {
         camera_x_ = 0.0f;
     }
 
-    float max_camera_x = static_cast<float>(kLevelWidth - kWindowWidth);
+    const float max_camera_x = static_cast<float>(kLevelWidth - kWindowWidth);
     if (camera_x_ > max_camera_x) {
         camera_x_ = max_camera_x;
     }
 }
 
 void Game::Render() {
-    SDL_SetRenderDrawColor(renderer_, 120, 185, 120, 255);
-    SDL_RenderClear(renderer_);
+    if (!background_texture_.Empty()) {
+        SDL_RenderCopy(renderer_, background_texture_.First(), nullptr, nullptr);
+    } else {
+        SDL_SetRenderDrawColor(renderer_, 120, 185, 120, 255);
+        SDL_RenderClear(renderer_);
 
-    SDL_SetRenderDrawColor(renderer_, 140, 205, 150, 255);
-    SDL_Rect skyBand1{0, 0, kWindowWidth, 170};
-    SDL_RenderFillRect(renderer_, &skyBand1);
+        SDL_SetRenderDrawColor(renderer_, 140, 205, 150, 255);
+        SDL_Rect sky_band_1{0, 0, kWindowWidth, 170};
+        SDL_RenderFillRect(renderer_, &sky_band_1);
 
-    SDL_SetRenderDrawColor(renderer_, 105, 170, 120, 255);
-    SDL_Rect skyBand2{0, 170, kWindowWidth, 130};
-    SDL_RenderFillRect(renderer_, &skyBand2);
+        SDL_SetRenderDrawColor(renderer_, 105, 170, 120, 255);
+        SDL_Rect sky_band_2{0, 170, kWindowWidth, 130};
+        SDL_RenderFillRect(renderer_, &sky_band_2);
+    }
 
     std::vector<TreeVisual> trees = BuildTreeVisualsFromPlatforms(platforms_);
 
-    for (const auto& tree : trees) {
-        int screen_x = tree.x - static_cast<int>(camera_x_ * 0.55f);
+    for (const TreeVisual& tree : trees) {
+        const int screen_x = tree.x - static_cast<int>(camera_x_ * 0.55f);
 
         SDL_SetRenderDrawColor(renderer_, 55, 85, 55, 255);
         SDL_Rect trunk{
@@ -730,16 +686,15 @@ void Game::Render() {
     }
 
     SDL_SetRenderDrawColor(renderer_, 58, 88, 42, 255);
-    SDL_Rect dirtBand{0, kWindowHeight - 52, kWindowWidth, 12};
-    SDL_RenderFillRect(renderer_, &dirtBand);
+    SDL_Rect dirt_band{0, kWindowHeight - 52, kWindowWidth, 12};
+    SDL_RenderFillRect(renderer_, &dirt_band);
 
     SDL_SetRenderDrawColor(renderer_, 75, 110, 58, 255);
     SDL_Rect ground{0, kWindowHeight - 40, kWindowWidth, 40};
     SDL_RenderFillRect(renderer_, &ground);
 
-    for (const auto& tree : trees) {
-        int screen_x = tree.x - static_cast<int>(camera_x_);
-
+    for (const TreeVisual& tree : trees) {
+        const int screen_x = tree.x - static_cast<int>(camera_x_);
         SDL_Rect trunk{
             screen_x - tree.trunk_w / 2,
             kWindowHeight - 40 - tree.trunk_h,
@@ -751,13 +706,13 @@ void Game::Render() {
         SDL_RenderFillRect(renderer_, &trunk);
 
         SDL_SetRenderDrawColor(renderer_, 120, 78, 46, 255);
-        SDL_Rect trunkHighlight{
+        SDL_Rect trunk_highlight{
             trunk.x + trunk.w / 3,
             trunk.y,
             trunk.w / 4,
             trunk.h
         };
-        SDL_RenderFillRect(renderer_, &trunkHighlight);
+        SDL_RenderFillRect(renderer_, &trunk_highlight);
 
         SDL_SetRenderDrawColor(renderer_, 70, 42, 24, 255);
         for (int i = 4; i < trunk.h; i += 22) {
@@ -796,138 +751,97 @@ void Game::Render() {
         SDL_RenderDrawLine(renderer_, screen_x + 18, trunk.y + 44, screen_x + 22, trunk.y + 84);
     }
 
+    DrawDecorativeApples(renderer_,
+                         apple_texture_.First(),
+                         apple_texture_.width > 0 ? apple_texture_.width : 18,
+                         apple_texture_.height > 0 ? apple_texture_.height : 18,
+                         trees,
+                         camera_x_);
 
-    for (const auto& vine : vines_) {
-        SDL_Rect r = vine.rect;
-        r.x -= static_cast<int>(camera_x_);
+    for (const Vine& vine : vines_) {
+        SDL_Rect rect = vine.rect;
+        rect.x -= static_cast<int>(camera_x_);
 
         SDL_SetRenderDrawColor(renderer_, 34, 120, 44, 255);
-        SDL_RenderFillRect(renderer_, &r);
+        SDL_RenderFillRect(renderer_, &rect);
 
         SDL_SetRenderDrawColor(renderer_, 58, 160, 62, 255);
-        SDL_Rect highlight{ r.x + 2, r.y, 2, r.h };
+        SDL_Rect highlight{ rect.x + 2, rect.y, 2, rect.h };
         SDL_RenderFillRect(renderer_, &highlight);
 
         SDL_SetRenderDrawColor(renderer_, 48, 145, 52, 255);
-        for (int y = r.y + 10; y < r.y + r.h - 8; y += 18) {
-            SDL_RenderDrawLine(renderer_, r.x + 2, y, r.x - 6, y + 4);
-            SDL_RenderDrawLine(renderer_, r.x + 3, y + 2, r.x + 9, y + 6);
+        for (int y = rect.y + 10; y < rect.y + rect.h - 8; y += 18) {
+            SDL_RenderDrawLine(renderer_, rect.x + 2, y, rect.x - 6, y + 4);
+            SDL_RenderDrawLine(renderer_, rect.x + 3, y + 2, rect.x + 9, y + 6);
         }
     }
 
-    for (const auto& platform : platforms_) {
-        SDL_Rect screenRect = platform.rect;
-        screenRect.x -= static_cast<int>(camera_x_);
-
+    for (const Platform& platform : platforms_) {
         if (platform.rect.h >= 30) {
             continue;
         }
 
+        SDL_Rect screen_rect = platform.rect;
+        screen_rect.x -= static_cast<int>(camera_x_);
+
         SDL_SetRenderDrawColor(renderer_, 110, 72, 42, 255);
-        SDL_RenderFillRect(renderer_, &screenRect);
+        SDL_RenderFillRect(renderer_, &screen_rect);
 
         SDL_SetRenderDrawColor(renderer_, 138, 94, 58, 255);
-        SDL_Rect topBark = screenRect;
-        topBark.h = 5;
-        SDL_RenderFillRect(renderer_, &topBark);
+        SDL_Rect top_bark = screen_rect;
+        top_bark.h = 5;
+        SDL_RenderFillRect(renderer_, &top_bark);
 
         SDL_SetRenderDrawColor(renderer_, 42, 120, 45, 255);
         SDL_Rect moss{
-            screenRect.x + 8,
-            screenRect.y - 6,
-            screenRect.w - 16,
+            screen_rect.x + 8,
+            screen_rect.y - 6,
+            screen_rect.w - 16,
             6
         };
         SDL_RenderFillRect(renderer_, &moss);
 
         SDL_SetRenderDrawColor(renderer_, 58, 150, 58, 255);
-        for (int gx = screenRect.x + 10; gx < screenRect.x + screenRect.w - 10; gx += 12) {
-            SDL_RenderDrawLine(renderer_, gx, screenRect.y, gx + 2, screenRect.y - 5);
-            SDL_RenderDrawLine(renderer_, gx + 4, screenRect.y, gx + 5, screenRect.y - 6);
+        for (int gx = screen_rect.x + 10; gx < screen_rect.x + screen_rect.w - 10; gx += 12) {
+            SDL_RenderDrawLine(renderer_, gx, screen_rect.y, gx + 2, screen_rect.y - 5);
+            SDL_RenderDrawLine(renderer_, gx + 4, screen_rect.y, gx + 5, screen_rect.y - 6);
         }
     }
 
-    for (const auto& spike : spikes_) {
+    for (const SpikeTrap& spike : spikes_) {
         SDL_Rect dest = spike.rect;
         dest.x -= static_cast<int>(camera_x_);
 
-        SDL_Texture* tex = spike_texture_.First();
-        if (tex) {
-            SDL_RenderCopy(renderer_, tex, nullptr, &dest);
+        if (!spike_texture_.Empty()) {
+            SDL_RenderCopy(renderer_, spike_texture_.First(), nullptr, &dest);
         } else {
             SDL_SetRenderDrawColor(renderer_, 190, 190, 190, 255);
             SDL_RenderFillRect(renderer_, &dest);
         }
     }
 
-    for (const auto& squirrel : squirrels_) {
-        int draw_w = squirrel_textures_.width > 0 ? squirrel_textures_.width : 54;
-        int draw_h = squirrel_textures_.height > 0 ? squirrel_textures_.height : 54;
-
-        SDL_Rect dest{
-            static_cast<int>(squirrel.x - camera_x_) - draw_w / 2,
-            static_cast<int>(squirrel.y) - draw_h,
-            draw_w,
-            draw_h
-        };
-
-        SDL_Texture* tex = nullptr;
-        if (!squirrel_textures_.Empty()) {
-            int frame = squirrel.shooting ? squirrel.shoot_frame : 0;
-            frame = std::clamp(frame, 0, static_cast<int>(squirrel_textures_.frames.size()) - 1);
-            tex = squirrel_textures_.frames[frame];
-        }
-
-        if (tex) {
-            SDL_RendererFlip flip = squirrel.facing_left ? SDL_FLIP_HORIZONTAL : SDL_FLIP_NONE;
-            SDL_RenderCopyEx(renderer_, tex, nullptr, &dest, 0.0, nullptr, flip);
-        } else {
-            SDL_SetRenderDrawColor(renderer_, 120, 80, 50, 255);
-            SDL_RenderFillRect(renderer_, &dest);
-        }
-    }
-
-    for (const auto& acorn : acorns_) {
-        int draw_w = acorn_textures_.width > 0 ? acorn_textures_.width : 20;
-        int draw_h = acorn_textures_.height > 0 ? acorn_textures_.height : 20;
-
-        SDL_Rect dest{
-            static_cast<int>(acorn.x - camera_x_) - draw_w / 2,
-            static_cast<int>(acorn.y) - draw_h / 2,
-            draw_w,
-            draw_h
-        };
-
-        SDL_Texture* tex = acorn_textures_.Empty()
-            ? nullptr
-            : acorn_textures_.frames[acorn.anim_frame % acorn_textures_.frames.size()];
-
-        if (tex) {
-            SDL_RenderCopy(renderer_, tex, nullptr, &dest);
-        } else {
-            SDL_SetRenderDrawColor(renderer_, 160, 100, 40, 255);
-            SDL_RenderFillRect(renderer_, &dest);
-        }
+    for (const SquirrelEnemy& squirrel : squirrels_) {
+        squirrel.Render(renderer_, camera_x_);
     }
 
     player_.Render(renderer_, camera_x_);
 
-    int health = player_.GetHealth();
-    int max_health = player_.GetMaxHealth();
-    for (int i = 0; i < max_health; ++i) {
-        DrawHeart(renderer_, 20 + i * 36, 20, 4, i < health);
+    for (int i = 0; i < player_.GetMaxHealth(); ++i) {
+        DrawHeart(renderer_, 20 + i * 36, 20, 4, i < player_.GetHealth());
     }
 
     SDL_RenderPresent(renderer_);
 }
 
 void Game::Shutdown() {
+    DestroyTextureSet(player_texture_);
     DestroyTextureSet(idle_textures_);
     DestroyTextureSet(walk_textures_);
-    DestroyTextureSet(jump_textures_);
     DestroyTextureSet(punch_textures_);
+    DestroyTextureSet(jump_textures_);
     DestroyTextureSet(heel_kick_textures_);
-    DestroyTextureSet(player_texture_);
+    DestroyTextureSet(background_texture_);
+    DestroyTextureSet(apple_texture_);
     DestroyTextureSet(squirrel_textures_);
     DestroyTextureSet(acorn_textures_);
     DestroyTextureSet(spike_texture_);

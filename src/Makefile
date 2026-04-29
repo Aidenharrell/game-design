@@ -1,11 +1,14 @@
 CXX = g++
-CXXFLAGS = -Wall -std=c++17 $(shell sdl2-config --cflags)
-LDFLAGS = $(shell sdl2-config --libs)
+SDL2_CONFIG = $(firstword $(wildcard /mingw64/bin/sdl2-config) sdl2-config)
+CXXFLAGS = -Wall -std=c++17 $(shell $(SDL2_CONFIG) --cflags)
+LDFLAGS = $(shell $(SDL2_CONFIG) --libs)
 
-SRC = main.cpp game.cpp input.cpp player.cpp
+SRC = main.cpp enemy.cpp game.cpp input.cpp player.cpp
 TARGET = game
 
 all: $(TARGET)
+
+build: $(TARGET)
 
 $(TARGET): $(SRC)
 	$(CXX) $(CXXFLAGS) $(SRC) -o $(TARGET) $(LDFLAGS)

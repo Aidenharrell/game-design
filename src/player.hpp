@@ -25,6 +25,9 @@ public:
 
     void Update(float dt, const InputState& input);
     void Render(SDL_Renderer* renderer, float camera_x) const;
+    SDL_Rect GetBodyRect() const;
+    SDL_Rect GetAttackRect() const;
+    void ApplyKnockback(float vx, float vy);
 
     int GetHealth() const { return health_; }
     int GetMaxHealth() const { return max_health_; }
@@ -52,23 +55,18 @@ private:
     int heel_kick_frame_ = 0;
 
     TextureSet base_texture_{};
-
     TextureSet jump_textures_{};
     int jump_frame_ = 0;
     float jump_frame_time_ = 0.0f;
-
     TextureSet heel_kick_textures_{};
-
     TextureSet idle_textures_{};
     int idle_frame_ = 0;
     float idle_frame_time_ = 0.0f;
     bool idle_active_ = false;
-
     TextureSet walk_textures_{};
     int walk_frame_ = 0;
     float walk_frame_time_ = 0.0f;
     bool walk_active_ = false;
-
     TextureSet punch_textures_{};
     bool facing_left_ = false;
 };
