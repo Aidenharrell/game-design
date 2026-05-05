@@ -45,8 +45,8 @@ private:
     float ground_y_ = 0.0f;
     bool on_ground_ = false;
 
-    int health_ = 3;
-    int max_health_ = 3;
+    int health_ = 6;
+    int max_health_ = 6;
 
     float punch_timer_ = 0.0f;
     float punch_frame_time_ = 0.0f;

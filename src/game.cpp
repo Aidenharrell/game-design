@@ -17,6 +17,7 @@ constexpr int kWindowWidth = 960;
 constexpr int kWindowHeight = 540;
 constexpr int kLevelWidth = 5200;
 constexpr float kPlayerHitCooldown = 0.9f;
+constexpr float kThornVineDamageInterval = 1.0f;
 
 struct TreeVisual {
     int x = 0;
@@ -25,6 +26,8 @@ struct TreeVisual {
     int canopy_w = 0;
     int canopy_h = 0;
 };
+
+std::vector<TreeVisual> cached_tree_visuals;
 
 struct LevelPhase {
     int start_x = 0;
@@ -207,7 +210,7 @@ std::vector<fs::path> CollectFramesByPrefix(const std::vector<fs::path>& dirs, c
     return {};
 }
 
-void DrawHeart(SDL_Renderer* renderer, int x, int y, int scale, bool filled) {
+void DrawHeart(SDL_Renderer* renderer, int x, int y, int scale, int fill_units) {
     static const int pattern[7][8] = {
         {0, 1, 1, 0, 0, 1, 1, 0},
         {1, 1, 1, 1, 1, 1, 1, 1},
@@ -218,15 +221,16 @@ void DrawHeart(SDL_Renderer* renderer, int x, int y, int scale, bool filled) {
         {0, 0, 0, 0, 0, 0, 0, 0}
     };
 
-    if (filled) {
-        SDL_SetRenderDrawColor(renderer, 220, 40, 60, 255);
-    } else {
-        SDL_SetRenderDrawColor(renderer, 70, 70, 70, 255);
-    }
-
     for (int row = 0; row < 7; ++row) {
         for (int col = 0; col < 8; ++col) {
             if (pattern[row][col] == 1) {
+                const bool filled = fill_units >= 2 || (fill_units == 1 && col < 4);
+                if (filled) {
+                    SDL_SetRenderDrawColor(renderer, 220, 40, 60, 255);
+                } else {
+                    SDL_SetRenderDrawColor(renderer, 70, 70, 70, 255);
+                }
+
                 SDL_Rect pixel{
                     x + col * scale,
                     y + row * scale,
@@ -246,21 +250,19 @@ void DrawFilledCircle(SDL_Renderer* renderer, int cx, int cy, int radius) {
     }
 }
 
-void DrawFilledEllipse(SDL_Renderer* renderer, int cx, int cy, int rx, int ry) {
-    if (rx <= 0 || ry <= 0) {
-        return;
-    }
-
-    for (int dy = -ry; dy <= ry; ++dy) {
-        const double y_ratio = static_cast<double>(dy) / static_cast<double>(ry);
-        const double ellipse_row = std::max(0.0, 1.0 - y_ratio * y_ratio);
-        const int dx_limit = static_cast<int>(rx * std::sqrt(ellipse_row));
-        SDL_RenderDrawLine(renderer, cx - dx_limit, cy + dy, cx + dx_limit, cy + dy);
-    }
-}
-
 bool RectsIntersect(const SDL_Rect& a, const SDL_Rect& b) {
     return SDL_HasIntersection(&a, &b) == SDL_TRUE;
+}
+
+bool RectOnScreen(const SDL_Rect& rect, int margin = 0) {
+    return rect.x + rect.w >= -margin &&
+           rect.x <= kWindowWidth + margin &&
+           rect.y + rect.h >= -margin &&
+           rect.y <= kWindowHeight + margin;
+}
+
+bool TreeOnScreen(int screen_x, int margin = 140) {
+    return screen_x >= -margin && screen_x <= kWindowWidth + margin;
 }
 
 void GenerateForestPlatforms(std::vector<Platform>& platforms) {
@@ -573,6 +575,10 @@ void DrawDecorativeApples(SDL_Renderer* renderer,
 
         const TreeVisual& tree = trees[i];
         const int screen_x = tree.x - static_cast<int>(camera_x);
+        if (!TreeOnScreen(screen_x)) {
+            continue;
+        }
+
         const int trunk_top = kWindowHeight - 40 - tree.trunk_h;
         const int apple_y = trunk_top + 34 + static_cast<int>((i % 3) * 6);
         const int offsets[3] = { -26, 6, 24 };
@@ -707,11 +713,13 @@ void Game::ResetRun() {
     input_ = InputState{};
     camera_x_ = 0.0f;
     player_damage_cooldown_ = 0.0f;
+    thorn_vine_damage_timer_ = 0.0f;
 
     player_.SetGroundY(kWindowHeight - 40.0f);
     player_.ResetForRun(120.0f, kWindowHeight - 80.0f);
 
     GenerateForestPlatforms(platforms_);
+    cached_tree_visuals = BuildTreeVisualsFromPlatforms(platforms_);
     PopulateVines(platforms_, vines_);
     PopulateSpikes(platforms_, spikes_);
     PopulatePoisonGas(poison_gas_);
@@ -745,7 +753,7 @@ void Game::HandleEvents() {
         } else if (event.type == SDL_KEYDOWN && !event.key.repeat) {
             input_.OnKeyDown(event.key.keysym.sym);
             if (event.key.keysym.sym == SDLK_h) {
-                player_.TakeDamage(1);
+                player_.TakeDamage(2);
             }
         } else if (event.type == SDL_KEYUP) {
             input_.OnKeyUp(event.key.keysym.sym);
@@ -759,6 +767,9 @@ void Game::Update(float dt) {
 
     if (player_damage_cooldown_ > 0.0f) {
         player_damage_cooldown_ = std::max(0.0f, player_damage_cooldown_ - dt);
+    }
+    if (thorn_vine_damage_timer_ > 0.0f) {
+        thorn_vine_damage_timer_ = std::max(0.0f, thorn_vine_damage_timer_ - dt);
     }
 
     SDL_Rect player_rect = player_.GetBodyRect();
@@ -807,7 +818,7 @@ void Game::Update(float dt) {
         float knockback_x = 0.0f;
         if (player_damage_cooldown_ <= 0.0f &&
             squirrel.CheckProjectileHitPlayer(player_rect, &knockback_x)) {
-            player_.TakeDamage(1);
+            player_.TakeDamage(2);
             player_.ApplyKnockback(knockback_x, -220.0f);
             player_damage_cooldown_ = kPlayerHitCooldown;
         }
@@ -828,8 +839,10 @@ void Game::Update(float dt) {
         vine_hitbox.w += 12;
 
         if (RectsIntersect(player_rect, vine_hitbox)) {
-            const float knockback_x = player_.GetX() < static_cast<float>(vine.rect.x) ? -150.0f : 150.0f;
-            damage_player_from_hazard(1, knockback_x, -160.0f);
+            if (thorn_vine_damage_timer_ <= 0.0f) {
+                player_.TakeDamage(1);
+                thorn_vine_damage_timer_ = kThornVineDamageInterval;
+            }
             break;
         }
     }
@@ -844,7 +857,7 @@ void Game::Update(float dt) {
 
         if (RectsIntersect(player_rect, spike_hitbox)) {
             const float knockback_x = player_.GetX() < static_cast<float>(spike.rect.x) ? -130.0f : 130.0f;
-            damage_player_from_hazard(1, knockback_x, -190.0f);
+            damage_player_from_hazard(2, knockback_x, -190.0f);
             break;
         }
     }
@@ -881,10 +894,13 @@ void Game::Render() {
         SDL_RenderFillRect(renderer_, &sky_band_2);
     }
 
-    std::vector<TreeVisual> trees = BuildTreeVisualsFromPlatforms(platforms_);
+    const std::vector<TreeVisual>& trees = cached_tree_visuals;
 
     for (const TreeVisual& tree : trees) {
         const int screen_x = tree.x - static_cast<int>(camera_x_ * 0.55f);
+        if (!TreeOnScreen(screen_x, 180)) {
+            continue;
+        }
 
         SDL_SetRenderDrawColor(renderer_, 55, 85, 55, 255);
         SDL_Rect trunk{
@@ -913,6 +929,10 @@ void Game::Render() {
 
     for (const TreeVisual& tree : trees) {
         const int screen_x = tree.x - static_cast<int>(camera_x_);
+        if (!TreeOnScreen(screen_x, 180)) {
+            continue;
+        }
+
         SDL_Rect trunk{
             screen_x - tree.trunk_w / 2,
             kWindowHeight - 40 - tree.trunk_h,
@@ -979,6 +999,9 @@ void Game::Render() {
     for (const Vine& vine : vines_) {
         SDL_Rect rect = vine.rect;
         rect.x -= static_cast<int>(camera_x_);
+        if (!RectOnScreen(rect, 24)) {
+            continue;
+        }
 
         SDL_SetRenderDrawColor(renderer_, 34, 120, 44, 255);
         SDL_RenderFillRect(renderer_, &rect);
@@ -997,6 +1020,9 @@ void Game::Render() {
     for (const DeadlyVine& vine : deadly_vines_) {
         SDL_Rect rect = vine.rect;
         rect.x -= static_cast<int>(camera_x_);
+        if (!RectOnScreen(rect, 24)) {
+            continue;
+        }
 
         SDL_SetRenderDrawColor(renderer_, 122, 28, 74, 255);
         SDL_RenderFillRect(renderer_, &rect);
@@ -1019,6 +1045,9 @@ void Game::Render() {
 
         SDL_Rect screen_rect = platform.rect;
         screen_rect.x -= static_cast<int>(camera_x_);
+        if (!RectOnScreen(screen_rect, 40)) {
+            continue;
+        }
 
         SDL_SetRenderDrawColor(renderer_, 110, 72, 42, 255);
         SDL_RenderFillRect(renderer_, &screen_rect);
@@ -1048,25 +1077,34 @@ void Game::Render() {
     for (const PoisonGasCloud& gas : poison_gas_) {
         SDL_Rect rect = gas.rect;
         rect.x -= static_cast<int>(camera_x_);
+        if (!RectOnScreen(rect, 80)) {
+            continue;
+        }
 
-        SDL_SetRenderDrawColor(renderer_, 116, 210, 58, 52);
-        DrawFilledEllipse(renderer_, rect.x + rect.w / 2, rect.y + (rect.h * 3) / 4, rect.w / 2, rect.h / 3);
+        for (int i = 0; i < 70; ++i) {
+            const int seed = gas.rect.x * 97 + gas.rect.y * 53 + i * 131;
+            const int dot_x = rect.x + 4 + (std::abs(seed * 17) % std::max(1, rect.w - 8));
+            const int dot_y = rect.y + 3 + (std::abs(seed * 29) % std::max(1, rect.h - 6));
+            const int radius = 1 + (std::abs(seed) % 3 == 0 ? 1 : 0);
+            const Uint8 alpha = static_cast<Uint8>(58 + std::abs(seed * 7) % 92);
 
-        SDL_SetRenderDrawColor(renderer_, 152, 245, 82, 78);
-        DrawFilledEllipse(renderer_, rect.x + rect.w / 4, rect.y + rect.h / 2, rect.w / 4, rect.h / 3);
-        DrawFilledEllipse(renderer_, rect.x + rect.w / 2, rect.y + rect.h / 3, rect.w / 3, rect.h / 3);
-        DrawFilledEllipse(renderer_, rect.x + (rect.w * 3) / 4, rect.y + rect.h / 2, rect.w / 4, rect.h / 3);
+            if (i % 5 == 0) {
+                SDL_SetRenderDrawColor(renderer_, 232, 176, 255, static_cast<Uint8>(alpha + 30));
+            } else if (i % 3 == 0) {
+                SDL_SetRenderDrawColor(renderer_, 188, 86, 236, alpha);
+            } else {
+                SDL_SetRenderDrawColor(renderer_, 130, 44, 190, alpha);
+            }
+            DrawFilledCircle(renderer_, dot_x, dot_y, radius);
+        }
 
-        SDL_SetRenderDrawColor(renderer_, 215, 255, 130, 42);
-        DrawFilledEllipse(renderer_, rect.x + rect.w / 3, rect.y + rect.h / 3, rect.w / 5, rect.h / 5);
-        DrawFilledEllipse(renderer_, rect.x + (rect.w * 2) / 3, rect.y + rect.h / 4, rect.w / 6, rect.h / 6);
-
-        SDL_SetRenderDrawColor(renderer_, 82, 140, 44, 92);
-        for (int i = 0; i < 4; ++i) {
-            const int x0 = rect.x + 12 + i * (rect.w - 24) / 4;
-            const int y0 = rect.y + rect.h - 8 - (i % 2) * 5;
-            SDL_RenderDrawLine(renderer_, x0, y0, x0 + 16, y0 - 8);
-            SDL_RenderDrawLine(renderer_, x0 + 16, y0 - 8, x0 + 34, y0 - 4);
+        SDL_SetRenderDrawColor(renderer_, 105, 36, 150, 70);
+        for (int i = 0; i < 5; ++i) {
+            const int seed = gas.rect.x * 41 + i * 89;
+            const int x0 = rect.x + 10 + (std::abs(seed) % std::max(1, rect.w - 20));
+            const int y0 = rect.y + rect.h - 7 - (i % 3) * 5;
+            SDL_RenderDrawLine(renderer_, x0, y0, x0 + 12, y0 - 6);
+            SDL_RenderDrawLine(renderer_, x0 + 12, y0 - 6, x0 + 24, y0 - 3);
         }
     }
     SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_NONE);
@@ -1074,6 +1112,9 @@ void Game::Render() {
     for (const SpikeTrap& spike : spikes_) {
         SDL_Rect dest = spike.rect;
         dest.x -= static_cast<int>(camera_x_);
+        if (!RectOnScreen(dest, 24)) {
+            continue;
+        }
 
         if (!spike_texture_.Empty()) {
             SDL_RenderCopy(renderer_, spike_texture_.First(), nullptr, &dest);
@@ -1089,8 +1130,9 @@ void Game::Render() {
 
     player_.Render(renderer_, camera_x_);
 
-    for (int i = 0; i < player_.GetMaxHealth(); ++i) {
-        DrawHeart(renderer_, 20 + i * 36, 20, 4, i < player_.GetHealth());
+    for (int i = 0; i < player_.GetMaxHealth() / 2; ++i) {
+        const int fill_units = std::clamp(player_.GetHealth() - i * 2, 0, 2);
+        DrawHeart(renderer_, 20 + i * 36, 20, 4, fill_units);
     }
 
     SDL_RenderPresent(renderer_);

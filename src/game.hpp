@@ -60,6 +60,7 @@ private:
     bool running_ = false;
     float camera_x_ = 0.0f;
     float player_damage_cooldown_ = 0.0f;
+    float thorn_vine_damage_timer_ = 0.0f;
 
     InputState input_{};
     Player player_{};
