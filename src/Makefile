@@ -3,7 +3,7 @@ SDL2_CONFIG = $(firstword $(wildcard /mingw64/bin/sdl2-config) sdl2-config)
 CXXFLAGS = -Wall -std=c++17 $(shell $(SDL2_CONFIG) --cflags)
 LDFLAGS = $(shell $(SDL2_CONFIG) --libs)
 
-SRC = main.cpp enemy.cpp game.cpp input.cpp player.cpp
+SRC = main.cpp boss.cpp enemy.cpp game.cpp input.cpp player.cpp
 TARGET = game
 
 all: $(TARGET)

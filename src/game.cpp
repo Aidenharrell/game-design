@@ -16,6 +16,7 @@ namespace {
 constexpr int kWindowWidth = 960;
 constexpr int kWindowHeight = 540;
 constexpr int kLevelWidth = 5200;
+constexpr int kBossArenaWidth = 1120;
 constexpr float kPlayerHitCooldown = 0.9f;
 constexpr float kThornVineDamageInterval = 1.0f;
 
@@ -619,6 +620,46 @@ void DrawGroundPhaseBands(SDL_Renderer* renderer, float camera_x) {
         SDL_RenderFillRect(renderer, &phase_ground);
     }
 }
+// Draws cave
+void DrawCavePortal(SDL_Renderer* renderer, const SDL_Rect& portal, float camera_x) {
+    SDL_Rect cave = portal;
+    cave.x -= static_cast<int>(camera_x);
+    if (!RectOnScreen(cave, 120)) {
+        return;
+    }
+
+    SDL_SetRenderDrawColor(renderer, 44, 38, 42, 255);
+    DrawFilledCircle(renderer, cave.x + cave.w / 2, cave.y + 34, cave.w / 2);
+    SDL_Rect rock_base{cave.x, cave.y + 30, cave.w, cave.h - 30};
+    SDL_RenderFillRect(renderer, &rock_base);
+
+    SDL_SetRenderDrawColor(renderer, 74, 68, 68, 255);
+    DrawFilledCircle(renderer, cave.x + 16, cave.y + 70, 22);
+    DrawFilledCircle(renderer, cave.x + cave.w - 18, cave.y + 82, 26);
+    DrawFilledCircle(renderer, cave.x + cave.w / 2, cave.y + 18, 20);
+
+    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+    SDL_SetRenderDrawColor(renderer, 16, 8, 28, 235);
+    SDL_Rect opening{cave.x + 24, cave.y + 36, cave.w - 48, cave.h - 38};
+    SDL_RenderFillRect(renderer, &opening);
+    DrawFilledCircle(renderer, opening.x + opening.w / 2, opening.y + 2, opening.w / 2);
+
+    SDL_SetRenderDrawColor(renderer, 118, 54, 180, 95);
+    DrawFilledCircle(renderer, opening.x + opening.w / 2, opening.y + opening.h / 2, 24);
+    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
+}
+// platforms in boss arena.
+std::vector<Platform> BuildBossArenaPlatforms() {
+    std::vector<Platform> platforms;
+    constexpr int ground_y = kWindowHeight - 40;
+    platforms.push_back({ SDL_Rect{0, ground_y, kBossArenaWidth, 40} });
+    platforms.push_back({ SDL_Rect{190, 250, 180, 18} });
+    platforms.push_back({ SDL_Rect{430, 350, 180, 18} });
+    platforms.push_back({ SDL_Rect{620, 425, 180, 18} });
+    platforms.push_back({ SDL_Rect{720, 250, 180, 18} });
+    platforms.push_back({ SDL_Rect{190, 425, 180, 18} });
+    return platforms;
+}
 }
 
 bool Game::Init() {
@@ -647,53 +688,56 @@ bool Game::Init() {
     player_texture_ = LoadSingleTexture(renderer_, assets_dir / "Opanda.bmp", false);
     background_texture_ = LoadSingleTexture(
         renderer_,
-        {
+        std::vector<fs::path>{
             assets_dir / "background" / "Background.bmp",
             assets_dir / "Background.bmp"
         },
         false);
     apple_texture_ = LoadSingleTexture(
         renderer_,
-        {
+        std::vector<fs::path>{
             assets_dir / "tree" / "apple.bmp",
             assets_dir / "apple.bmp"
         },
         true);
     spike_texture_ = LoadSingleTexture(
         renderer_,
-        {
+        std::vector<fs::path>{
             assets_dir / "spikes" / "spike1.bmp",
             assets_dir / "spike1.bmp"
         },
         true);
+    snake_head_texture_ = LoadSingleTexture(renderer_, assets_dir / "snake" / "snakehead.bmp", true);
+    snake_body_texture_ = LoadSingleTexture(renderer_, assets_dir / "snake" / "snakebody.bmp", true);
+    snake_tail_texture_ = LoadSingleTexture(renderer_, assets_dir / "snake" / "snaketail.bmp", true);
 
     idle_textures_ = LoadTextureSet(
         renderer_,
-        CollectFramesByPrefix({ assets_dir / "idel", assets_dir }, "idel"),
+        CollectFramesByPrefix(std::vector<fs::path>{ assets_dir / "idel", assets_dir }, "idel"),
         false);
     walk_textures_ = LoadTextureSet(
         renderer_,
-        CollectFramesByPrefix({ assets_dir / "walk", assets_dir }, "rewalk"),
+        CollectFramesByPrefix(std::vector<fs::path>{ assets_dir / "walk", assets_dir }, "rewalk"),
         false);
     jump_textures_ = LoadTextureSet(
         renderer_,
-        CollectFramesByPrefix({ assets_dir / "jump", assets_dir }, "jump"),
+        CollectFramesByPrefix(std::vector<fs::path>{ assets_dir / "jump", assets_dir }, "jump"),
         false);
     punch_textures_ = LoadTextureSet(
         renderer_,
-        CollectFramesByPrefix({ assets_dir / "punch", assets_dir }, "punch"),
+        CollectFramesByPrefix(std::vector<fs::path>{ assets_dir / "punch", assets_dir }, "punch"),
         false);
     heel_kick_textures_ = LoadTextureSet(
         renderer_,
-        CollectFramesByPrefix({ assets_dir / "heel", assets_dir }, "heel"),
+        CollectFramesByPrefix(std::vector<fs::path>{ assets_dir / "heel", assets_dir }, "heel"),
         false);
     squirrel_textures_ = LoadTextureSet(
         renderer_,
-        CollectFramesByPrefix({ assets_dir / "squirrelshot", assets_dir }, "shoot"),
+        CollectFramesByPrefix(std::vector<fs::path>{ assets_dir / "squirrelshot", assets_dir }, "shoot"),
         true);
     acorn_textures_ = LoadTextureSet(
         renderer_,
-        CollectFramesByPrefix({ assets_dir / "acorn", assets_dir }, "acorn"),
+        CollectFramesByPrefix(std::vector<fs::path>{ assets_dir / "acorn", assets_dir }, "acorn"),
         true);
 
     if (!player_texture_.Empty()) player_.SetTexture(player_texture_);
@@ -702,6 +746,7 @@ bool Game::Init() {
     if (!jump_textures_.Empty()) player_.SetJumpTextures(jump_textures_);
     if (!punch_textures_.Empty()) player_.SetPunchTextures(punch_textures_);
     if (!heel_kick_textures_.Empty()) player_.SetHeelKickTextures(heel_kick_textures_);
+    boss_.SetTextures(snake_head_texture_, snake_body_texture_, snake_tail_texture_);
 
     ResetRun();
 
@@ -712,19 +757,38 @@ bool Game::Init() {
 void Game::ResetRun() {
     input_ = InputState{};
     camera_x_ = 0.0f;
+    in_boss_arena_ = false;
     player_damage_cooldown_ = 0.0f;
     thorn_vine_damage_timer_ = 0.0f;
+    cave_portal_ = SDL_Rect{145,160,112,120}; // comment this out to interact with boss area normally.
+    // cave_portal_ = SDL_Rect{kLevelWidth - 145, kWindowHeight - 160, 112, 120};
 
     player_.SetGroundY(kWindowHeight - 40.0f);
     player_.ResetForRun(120.0f, kWindowHeight - 80.0f);
 
-    GenerateForestPlatforms(platforms_);
-    cached_tree_visuals = BuildTreeVisualsFromPlatforms(platforms_);
-    PopulateVines(platforms_, vines_);
-    PopulateSpikes(platforms_, spikes_);
+    GenerateForestPlatforms(forest_platforms_);
+    platforms_ = forest_platforms_;
+    cached_tree_visuals = BuildTreeVisualsFromPlatforms(forest_platforms_);
+    PopulateVines(forest_platforms_, vines_);
+    PopulateSpikes(forest_platforms_, spikes_);
     PopulatePoisonGas(poison_gas_);
-    PopulateDeadlyVines(platforms_, deadly_vines_);
-    PopulateSquirrels(platforms_, squirrels_, squirrel_textures_, acorn_textures_);
+    PopulateDeadlyVines(forest_platforms_, deadly_vines_);
+    PopulateSquirrels(forest_platforms_, squirrels_, squirrel_textures_, acorn_textures_);
+    boss_platforms_ = BuildBossArenaPlatforms();
+    boss_.Reset(760.0f, kWindowHeight - 40.0f);
+}
+
+void Game::EnterBossArena() {
+    in_boss_arena_ = true;
+    input_ = InputState{};
+    camera_x_ = 0.0f;
+    player_damage_cooldown_ = 0.0f;
+    thorn_vine_damage_timer_ = 0.0f;
+
+    platforms_ = boss_platforms_;
+    player_.SetGroundY(kWindowHeight - 40.0f);
+    player_.ResetForRun(120.0f, kWindowHeight - 40.0f);
+    boss_.Reset(760.0f, kWindowHeight - 40.0f);
 }
 
 void Game::Run() {
@@ -762,6 +826,11 @@ void Game::HandleEvents() {
 }
 
 void Game::Update(float dt) {
+    if (in_boss_arena_) {
+        UpdateBossArena(dt);
+        return;
+    }
+
     player_.Update(dt, input_);
     player_.CheckPlatformCollisions(platforms_);
 
@@ -774,6 +843,11 @@ void Game::Update(float dt) {
 
     SDL_Rect player_rect = player_.GetBodyRect();
     const SDL_Rect attack_rect = player_.GetAttackRect();
+
+    if (RectsIntersect(player_rect, cave_portal_)) {
+        EnterBossArena();
+        return;
+    }
 
     bool on_vine = false;
     for (const Vine& vine : vines_) {
@@ -878,7 +952,55 @@ void Game::Update(float dt) {
     }
 }
 
+void Game::UpdateBossArena(float dt) {
+    player_.Update(dt, input_);
+    player_.CheckPlatformCollisions(platforms_);
+
+    if (player_.GetX() < 20.0f) {
+        player_.SetPosition(20.0f, player_.GetY());
+    } else if (player_.GetX() > kBossArenaWidth - 78.0f) {
+        player_.SetPosition(kBossArenaWidth - 78.0f, player_.GetY());
+    }
+
+    if (player_damage_cooldown_ > 0.0f) {
+        player_damage_cooldown_ = std::max(0.0f, player_damage_cooldown_ - dt);
+    }
+
+    SDL_Rect player_rect = player_.GetBodyRect();
+    const SDL_Rect attack_rect = player_.GetAttackRect();
+    boss_.Update(dt, player_rect);
+    boss_.TryTakeHit(attack_rect);
+
+    float knockback_x = 0.0f;
+    if (player_damage_cooldown_ <= 0.0f &&
+        boss_.CheckContactHitPlayer(player_rect, &knockback_x)) {
+        player_.TakeDamage(2);
+        player_.ApplyKnockback(knockback_x, -230.0f);
+        player_damage_cooldown_ = kPlayerHitCooldown;
+    }
+
+    if (player_.GetHealth() <= 0) {
+        ResetRun();
+        return;
+    }
+
+    camera_x_ = player_.GetX() - (kWindowWidth / 2.0f);
+    if (camera_x_ < 0.0f) {
+        camera_x_ = 0.0f;
+    }
+
+    const float max_camera_x = static_cast<float>(kBossArenaWidth - kWindowWidth);
+    if (camera_x_ > max_camera_x) {
+        camera_x_ = max_camera_x;
+    }
+}
+
 void Game::Render() {
+    if (in_boss_arena_) {
+        RenderBossArena();
+        return;
+    }
+
     if (!background_texture_.Empty()) {
         SDL_RenderCopy(renderer_, background_texture_.First(), nullptr, nullptr);
     } else {
@@ -1128,12 +1250,77 @@ void Game::Render() {
         squirrel.Render(renderer_, camera_x_);
     }
 
+    DrawCavePortal(renderer_, cave_portal_, camera_x_);
+
     player_.Render(renderer_, camera_x_);
 
     for (int i = 0; i < player_.GetMaxHealth() / 2; ++i) {
         const int fill_units = std::clamp(player_.GetHealth() - i * 2, 0, 2);
         DrawHeart(renderer_, 20 + i * 36, 20, 4, fill_units);
     }
+
+    SDL_RenderPresent(renderer_);
+}
+
+void Game::RenderBossArena() {
+    SDL_SetRenderDrawColor(renderer_, 5, 4, 12, 255);
+    SDL_RenderClear(renderer_);
+
+    SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_BLEND);
+    for (int i = 0; i < 70; ++i) {
+        const int x = (i * 137) % kWindowWidth;
+        const int y = 18 + ((i * 83) % 350);
+        const int radius = 1 + (i % 4 == 0 ? 1 : 0);
+        SDL_SetRenderDrawColor(renderer_, 84, 54, 132, static_cast<Uint8>(55 + (i % 5) * 18));
+        DrawFilledCircle(renderer_, x, y, radius);
+    }
+    SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_NONE);
+
+    SDL_SetRenderDrawColor(renderer_, 18, 10, 32, 255);
+    SDL_Rect horizon{0, 350, kWindowWidth, 150};
+    SDL_RenderFillRect(renderer_, &horizon);
+
+    SDL_SetRenderDrawColor(renderer_, 36, 22, 54, 255);
+    SDL_Rect ground{0, kWindowHeight - 40, kWindowWidth, 40};
+    SDL_RenderFillRect(renderer_, &ground);
+
+    for (const Platform& platform : platforms_) {
+        if (platform.rect.h >= 30) {
+            continue;
+        }
+
+        SDL_Rect rect = platform.rect;
+        rect.x -= static_cast<int>(camera_x_);
+        if (!RectOnScreen(rect, 40)) {
+            continue;
+        }
+
+        SDL_SetRenderDrawColor(renderer_, 52, 38, 72, 255);
+        SDL_RenderFillRect(renderer_, &rect);
+        SDL_SetRenderDrawColor(renderer_, 124, 72, 168, 255);
+        SDL_Rect glow{rect.x, rect.y - 4, rect.w, 4};
+        SDL_RenderFillRect(renderer_, &glow);
+    }
+
+    boss_.Render(renderer_, camera_x_);
+    player_.Render(renderer_, camera_x_);
+
+    for (int i = 0; i < player_.GetMaxHealth() / 2; ++i) {
+        const int fill_units = std::clamp(player_.GetHealth() - i * 2, 0, 2);
+        DrawHeart(renderer_, 20 + i * 36, 20, 4, fill_units);
+    }
+
+    SDL_SetRenderDrawColor(renderer_, 38, 24, 56, 255);
+    SDL_Rect boss_bar_back{250, 24, 460, 18};
+    SDL_RenderFillRect(renderer_, &boss_bar_back);
+    if (!boss_.IsDefeated()) {
+        const int fill_w = (boss_bar_back.w * boss_.GetHealth()) / boss_.GetMaxHealth();
+        SDL_SetRenderDrawColor(renderer_, 176, 42, 214, 255);
+        SDL_Rect boss_bar_fill{boss_bar_back.x, boss_bar_back.y, fill_w, boss_bar_back.h};
+        SDL_RenderFillRect(renderer_, &boss_bar_fill);
+    }
+    SDL_SetRenderDrawColor(renderer_, 120, 84, 150, 255);
+    SDL_RenderDrawRect(renderer_, &boss_bar_back);
 
     SDL_RenderPresent(renderer_);
 }
@@ -1150,6 +1337,9 @@ void Game::Shutdown() {
     DestroyTextureSet(squirrel_textures_);
     DestroyTextureSet(acorn_textures_);
     DestroyTextureSet(spike_texture_);
+    DestroyTextureSet(snake_head_texture_);
+    DestroyTextureSet(snake_body_texture_);
+    DestroyTextureSet(snake_tail_texture_);
 
     if (renderer_) {
         SDL_DestroyRenderer(renderer_);
