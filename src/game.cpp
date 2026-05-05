@@ -458,6 +458,81 @@ void PopulateSpikes(const std::vector<Platform>& platforms, std::vector<SpikeTra
     }
 }
 
+void PopulatePoisonGas(std::vector<PoisonGasCloud>& poison_gas) {
+    poison_gas.clear();
+    constexpr int ground_y = kWindowHeight - 40;
+
+    struct GasPhase {
+        int start_x = 0;
+        int end_x = 0;
+        int spacing = 0;
+        int width = 0;
+        int height = 0;
+        int jitter = 0;
+    };
+
+    const GasPhase gas_phases[] = {
+        {1500, 2600, 430, 92, 34, 52},
+        {2700, 3900, 340, 128, 44, 70},
+        {4000, kLevelWidth - 260, 270, 168, 56, 84}
+    };
+
+    for (const GasPhase& phase : gas_phases) {
+        int cloud_index = 0;
+        for (int x = phase.start_x; x < phase.end_x; x += phase.spacing) {
+            const int offset = ((cloud_index * 43) % (phase.jitter + 1)) - (phase.jitter / 2);
+            PoisonGasCloud cloud;
+            cloud.rect = SDL_Rect{
+                x + offset,
+                ground_y - phase.height,
+                phase.width,
+                phase.height
+            };
+            poison_gas.push_back(cloud);
+            ++cloud_index;
+        }
+    }
+}
+
+void PopulateDeadlyVines(const std::vector<Platform>& platforms, std::vector<DeadlyVine>& deadly_vines) {
+    deadly_vines.clear();
+    std::mt19937 rng(9090);
+    std::uniform_int_distribution<int> chance_dist(0, 99);
+    std::uniform_int_distribution<int> side_dist(0, 1);
+    std::uniform_int_distribution<int> length_bonus_dist(0, 60);
+
+    int deadly_vine_count = 0;
+    for (const Platform& platform : platforms) {
+        if (platform.rect.h >= 30 || platform.rect.x < 1450 || platform.rect.w < 95) {
+            continue;
+        }
+
+        const int phase = DifficultyPhaseForX(platform.rect.x);
+        const int deadly_vine_chance[] = {0, 18, 30, 44};
+        if (chance_dist(rng) >= deadly_vine_chance[phase]) {
+            continue;
+        }
+
+        const int vine_x = platform.rect.x + platform.rect.w / 2 + (side_dist(rng) == 0 ? -32 : 32);
+        const int vine_y = platform.rect.y + 8;
+        int vine_h = 95 + phase * 18 + length_bonus_dist(rng);
+        const int max_h = (kWindowHeight - 40) - vine_y;
+        vine_h = std::min(vine_h, max_h);
+        if (vine_h < 45) {
+            continue;
+        }
+
+        DeadlyVine vine;
+        vine.rect = SDL_Rect{vine_x, vine_y, 8, vine_h};
+        deadly_vines.push_back(vine);
+        ++deadly_vine_count;
+
+        if (deadly_vine_count >= 16) {
+            break;
+        }
+    }
+}
+
 void PopulateSquirrels(const std::vector<Platform>& platforms,
                        std::vector<SquirrelEnemy>& squirrels,
                        const TextureSet& squirrel_textures,
@@ -644,6 +719,8 @@ void Game::ResetRun() {
     GenerateForestPlatforms(platforms_);
     PopulateVines(platforms_, vines_);
     PopulateSpikes(platforms_, spikes_);
+    PopulatePoisonGas(poison_gas_);
+    PopulateDeadlyVines(platforms_, deadly_vines_);
     PopulateSquirrels(platforms_, squirrels_, squirrel_textures_, acorn_textures_);
 }
 
@@ -714,6 +791,17 @@ void Game::Update(float dt) {
         }
     }
 
+    auto damage_player_from_hazard = [&](int amount, float knockback_x, float knockback_y) {
+        if (player_damage_cooldown_ > 0.0f) {
+            return false;
+        }
+
+        player_.TakeDamage(amount);
+        player_.ApplyKnockback(knockback_x, knockback_y);
+        player_damage_cooldown_ = kPlayerHitCooldown;
+        return true;
+    };
+
     for (SquirrelEnemy& squirrel : squirrels_) {
         squirrel.Update(dt, player_rect);
 
@@ -731,6 +819,27 @@ void Game::Update(float dt) {
     }
 
     player_rect = player_.GetBodyRect();
+    for (const PoisonGasCloud& gas : poison_gas_) {
+        if (RectsIntersect(player_rect, gas.rect)) {
+            damage_player_from_hazard(1, 0.0f, -130.0f);
+            break;
+        }
+    }
+
+    player_rect = player_.GetBodyRect();
+    for (const DeadlyVine& vine : deadly_vines_) {
+        SDL_Rect vine_hitbox = vine.rect;
+        vine_hitbox.x -= 6;
+        vine_hitbox.w += 12;
+
+        if (RectsIntersect(player_rect, vine_hitbox)) {
+            const float knockback_x = player_.GetX() < static_cast<float>(vine.rect.x) ? -150.0f : 150.0f;
+            damage_player_from_hazard(1, knockback_x, -160.0f);
+            break;
+        }
+    }
+
+    player_rect = player_.GetBodyRect();
     for (const SpikeTrap& spike : spikes_) {
         SDL_Rect spike_hitbox = spike.rect;
         spike_hitbox.x += 10;
@@ -739,7 +848,8 @@ void Game::Update(float dt) {
         spike_hitbox.h -= 14;
 
         if (RectsIntersect(player_rect, spike_hitbox)) {
-            player_.TakeDamage(player_.GetMaxHealth());
+            const float knockback_x = player_.GetX() < static_cast<float>(spike.rect.x) ? -130.0f : 130.0f;
+            damage_player_from_hazard(1, knockback_x, -190.0f);
             break;
         }
     }
@@ -889,6 +999,24 @@ void Game::Render() {
         }
     }
 
+    for (const DeadlyVine& vine : deadly_vines_) {
+        SDL_Rect rect = vine.rect;
+        rect.x -= static_cast<int>(camera_x_);
+
+        SDL_SetRenderDrawColor(renderer_, 122, 28, 74, 255);
+        SDL_RenderFillRect(renderer_, &rect);
+
+        SDL_SetRenderDrawColor(renderer_, 206, 52, 98, 255);
+        SDL_Rect glow{rect.x + 2, rect.y, 3, rect.h};
+        SDL_RenderFillRect(renderer_, &glow);
+
+        SDL_SetRenderDrawColor(renderer_, 245, 222, 118, 255);
+        for (int y = rect.y + 12; y < rect.y + rect.h - 8; y += 16) {
+            SDL_RenderDrawLine(renderer_, rect.x + 1, y, rect.x - 8, y + 5);
+            SDL_RenderDrawLine(renderer_, rect.x + rect.w - 1, y + 4, rect.x + rect.w + 8, y + 9);
+        }
+    }
+
     for (const Platform& platform : platforms_) {
         if (platform.rect.h >= 30) {
             continue;
@@ -920,6 +1048,25 @@ void Game::Render() {
             SDL_RenderDrawLine(renderer_, gx + 4, screen_rect.y, gx + 5, screen_rect.y - 6);
         }
     }
+
+    SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_BLEND);
+    for (const PoisonGasCloud& gas : poison_gas_) {
+        SDL_Rect rect = gas.rect;
+        rect.x -= static_cast<int>(camera_x_);
+
+        SDL_SetRenderDrawColor(renderer_, 126, 224, 62, 92);
+        SDL_Rect base{rect.x, rect.y + rect.h / 3, rect.w, (rect.h * 2) / 3};
+        SDL_RenderFillRect(renderer_, &base);
+
+        SDL_SetRenderDrawColor(renderer_, 178, 255, 86, 120);
+        DrawFilledCircle(renderer_, rect.x + rect.w / 5, rect.y + rect.h / 2, rect.h / 2);
+        DrawFilledCircle(renderer_, rect.x + rect.w / 2, rect.y + rect.h / 3, rect.h / 2);
+        DrawFilledCircle(renderer_, rect.x + (rect.w * 4) / 5, rect.y + rect.h / 2, rect.h / 2);
+
+        SDL_SetRenderDrawColor(renderer_, 92, 150, 44, 140);
+        SDL_RenderDrawLine(renderer_, rect.x + 8, rect.y + rect.h - 5, rect.x + rect.w - 8, rect.y + rect.h - 5);
+    }
+    SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_NONE);
 
     for (const SpikeTrap& spike : spikes_) {
         SDL_Rect dest = spike.rect;

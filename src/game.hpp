@@ -15,6 +15,14 @@ struct SpikeTrap {
     SDL_Rect rect{};
 };
 
+struct PoisonGasCloud {
+    SDL_Rect rect{};
+};
+
+struct DeadlyVine {
+    SDL_Rect rect{};
+};
+
 class Game {
 public:
     bool Init();
@@ -46,6 +54,8 @@ private:
     std::vector<SquirrelEnemy> squirrels_{};
     std::vector<SpikeTrap> spikes_{};
     std::vector<Vine> vines_{};
+    std::vector<PoisonGasCloud> poison_gas_{};
+    std::vector<DeadlyVine> deadly_vines_{};
 
     bool running_ = false;
     float camera_x_ = 0.0f;
