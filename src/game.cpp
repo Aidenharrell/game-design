@@ -26,6 +26,31 @@ struct TreeVisual {
     int canopy_h = 0;
 };
 
+struct LevelPhase {
+    int start_x = 0;
+    int end_x = 0;
+    int ground_r = 0;
+    int ground_g = 0;
+    int ground_b = 0;
+};
+
+constexpr LevelPhase kLevelPhases[] = {
+    {0, 1400, 75, 110, 58},
+    {1400, 2600, 86, 104, 56},
+    {2600, 3900, 99, 94, 54},
+    {3900, kLevelWidth, 112, 84, 54}
+};
+constexpr int kLevelPhaseCount = sizeof(kLevelPhases) / sizeof(kLevelPhases[0]);
+
+int DifficultyPhaseForX(int x) {
+    for (int i = kLevelPhaseCount - 1; i >= 0; --i) {
+        if (x >= kLevelPhases[i].start_x) {
+            return i;
+        }
+    }
+    return 0;
+}
+
 SDL_Texture* LoadTextureBMP(SDL_Renderer* renderer, const fs::path& path, int* out_w, int* out_h, bool use_black_colorkey) {
     if (!fs::exists(path)) {
         return nullptr;
@@ -238,15 +263,28 @@ void GenerateForestPlatforms(std::vector<Platform>& platforms) {
 
     std::mt19937 rng(4000);
     int tree_x = 950;
-    std::uniform_int_distribution<int> trunk_gap(240, 310);
-    std::uniform_int_distribution<int> low_y(330, 390);
-    std::uniform_int_distribution<int> mid_y(250, 315);
-    std::uniform_int_distribution<int> high_y(180, 245);
-    std::uniform_int_distribution<int> width_dist(115, 155);
     std::uniform_int_distribution<int> offset_dist(-22, 22);
     std::uniform_int_distribution<int> pattern_dist(0, 2);
 
     while (tree_x < kLevelWidth - 220) {
+        const int phase = DifficultyPhaseForX(tree_x);
+        const int gap_min[] = {240, 260, 285, 315};
+        const int gap_max[] = {315, 345, 380, 420};
+        const int low_min[] = {330, 315, 300, 285};
+        const int low_max[] = {390, 375, 360, 340};
+        const int mid_min[] = {250, 235, 215, 195};
+        const int mid_max[] = {315, 295, 275, 250};
+        const int high_min[] = {180, 165, 145, 125};
+        const int high_max[] = {245, 225, 205, 185};
+        const int width_min[] = {120, 110, 98, 86};
+        const int width_max[] = {160, 145, 130, 115};
+
+        std::uniform_int_distribution<int> trunk_gap(gap_min[phase], gap_max[phase]);
+        std::uniform_int_distribution<int> low_y(low_min[phase], low_max[phase]);
+        std::uniform_int_distribution<int> mid_y(mid_min[phase], mid_max[phase]);
+        std::uniform_int_distribution<int> high_y(high_min[phase], high_max[phase]);
+        std::uniform_int_distribution<int> width_dist(width_min[phase], width_max[phase]);
+
         const int pattern = pattern_dist(rng);
         const int branch1_y = low_y(rng);
         const int branch2_y = mid_y(rng);
@@ -355,17 +393,55 @@ void PopulateSpikes(const std::vector<Platform>& platforms, std::vector<SpikeTra
     spikes.clear();
     std::mt19937 rng(7070);
     std::uniform_int_distribution<int> chance_dist(0, 99);
+    constexpr int spike_w = 34;
+    constexpr int spike_h = 26;
+    constexpr int ground_y = kWindowHeight - 40;
 
+    struct BottomSpikePhase {
+        int start_x = 0;
+        int end_x = 0;
+        int spacing = 0;
+        int cluster_size = 0;
+        int jitter = 0;
+    };
+
+    const BottomSpikePhase bottom_phases[] = {
+        {760, 1400, 360, 1, 42},
+        {1500, 2600, 290, 2, 58},
+        {2700, 3900, 230, 3, 70},
+        {4000, kLevelWidth - 260, 185, 4, 64}
+    };
+
+    for (const BottomSpikePhase& phase : bottom_phases) {
+        int cluster_index = 0;
+        for (int x = phase.start_x; x < phase.end_x; x += phase.spacing) {
+            const int offset = ((cluster_index * 37) % (phase.jitter + 1)) - (phase.jitter / 2);
+            for (int i = 0; i < phase.cluster_size; ++i) {
+                SpikeTrap spike;
+                spike.rect = SDL_Rect{
+                    x + offset + i * (spike_w + 6),
+                    ground_y - spike_h,
+                    spike_w,
+                    spike_h
+                };
+                spikes.push_back(spike);
+            }
+            ++cluster_index;
+        }
+    }
+
+    int elevated_spike_count = 0;
     for (const Platform& platform : platforms) {
         if (platform.rect.h >= 30 || platform.rect.x < 900 || platform.rect.w < 90) {
             continue;
         }
-        if (chance_dist(rng) >= 18) {
+
+        const int phase = DifficultyPhaseForX(platform.rect.x);
+        const int platform_spike_chance[] = {16, 24, 34, 46};
+        if (chance_dist(rng) >= platform_spike_chance[phase]) {
             continue;
         }
 
-        constexpr int spike_w = 34;
-        constexpr int spike_h = 26;
         SpikeTrap spike;
         spike.rect = SDL_Rect{
             platform.rect.x + (platform.rect.w / 2) - (spike_w / 2),
@@ -374,8 +450,9 @@ void PopulateSpikes(const std::vector<Platform>& platforms, std::vector<SpikeTra
             spike_h
         };
         spikes.push_back(spike);
+        ++elevated_spike_count;
 
-        if (spikes.size() >= 10) {
+        if (elevated_spike_count >= 14) {
             break;
         }
     }
@@ -439,6 +516,31 @@ void DrawDecorativeApples(SDL_Renderer* renderer,
             };
             SDL_RenderCopy(renderer, apple_texture, nullptr, &dest);
         }
+    }
+}
+
+void DrawGroundPhaseBands(SDL_Renderer* renderer, float camera_x) {
+    for (const LevelPhase& phase : kLevelPhases) {
+        const int screen_x = phase.start_x - static_cast<int>(camera_x);
+        const int screen_end_x = phase.end_x - static_cast<int>(camera_x);
+
+        if (screen_end_x < 0 || screen_x > kWindowWidth) {
+            continue;
+        }
+
+        SDL_SetRenderDrawColor(
+            renderer,
+            static_cast<Uint8>(phase.ground_r),
+            static_cast<Uint8>(phase.ground_g),
+            static_cast<Uint8>(phase.ground_b),
+            255);
+        SDL_Rect phase_ground{
+            std::max(0, screen_x),
+            kWindowHeight - 40,
+            std::min(kWindowWidth, screen_end_x) - std::max(0, screen_x),
+            40
+        };
+        SDL_RenderFillRect(renderer, &phase_ground);
     }
 }
 }
@@ -525,16 +627,24 @@ bool Game::Init() {
     if (!punch_textures_.Empty()) player_.SetPunchTextures(punch_textures_);
     if (!heel_kick_textures_.Empty()) player_.SetHeelKickTextures(heel_kick_textures_);
 
+    ResetRun();
+
+    running_ = true;
+    return true;
+}
+
+void Game::ResetRun() {
+    input_ = InputState{};
+    camera_x_ = 0.0f;
+    player_damage_cooldown_ = 0.0f;
+
     player_.SetGroundY(kWindowHeight - 40.0f);
-    player_.SetPosition(120.0f, kWindowHeight - 80.0f);
+    player_.ResetForRun(120.0f, kWindowHeight - 80.0f);
 
     GenerateForestPlatforms(platforms_);
     PopulateVines(platforms_, vines_);
     PopulateSpikes(platforms_, spikes_);
     PopulateSquirrels(platforms_, squirrels_, squirrel_textures_, acorn_textures_);
-
-    running_ = true;
-    return true;
 }
 
 void Game::Run() {
@@ -634,6 +744,11 @@ void Game::Update(float dt) {
         }
     }
 
+    if (player_.GetHealth() <= 0) {
+        ResetRun();
+        return;
+    }
+
     camera_x_ = player_.GetX() - (kWindowWidth / 2.0f);
     if (camera_x_ < 0.0f) {
         camera_x_ = 0.0f;
@@ -689,9 +804,7 @@ void Game::Render() {
     SDL_Rect dirt_band{0, kWindowHeight - 52, kWindowWidth, 12};
     SDL_RenderFillRect(renderer_, &dirt_band);
 
-    SDL_SetRenderDrawColor(renderer_, 75, 110, 58, 255);
-    SDL_Rect ground{0, kWindowHeight - 40, kWindowWidth, 40};
-    SDL_RenderFillRect(renderer_, &ground);
+    DrawGroundPhaseBands(renderer_, camera_x_);
 
     for (const TreeVisual& tree : trees) {
         const int screen_x = tree.x - static_cast<int>(camera_x_);

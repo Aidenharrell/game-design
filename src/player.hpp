@@ -33,6 +33,7 @@ public:
     int GetMaxHealth() const { return max_health_; }
     void TakeDamage(int amount = 1);
     void Heal(int amount = 1);
+    void ResetForRun(float x, float y);
     float GetVelocityY() const { return vy_; }
     void SetVelocityY(float v) { vy_ = v; }
 

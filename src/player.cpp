@@ -62,6 +62,31 @@ void Player::Heal(int amount) {
     }
 }
 
+void Player::ResetForRun(float x, float y) {
+    x_ = x;
+    y_ = y;
+    vx_ = 0.0f;
+    vy_ = 0.0f;
+    on_ground_ = false;
+    health_ = max_health_;
+
+    punch_timer_ = 0.0f;
+    punch_frame_time_ = 0.0f;
+    punch_frame_ = 0;
+    heel_kick_timer_ = 0.0f;
+    heel_kick_frame_time_ = 0.0f;
+    heel_kick_frame_ = 0;
+    jump_frame_ = 0;
+    jump_frame_time_ = 0.0f;
+    idle_frame_ = 0;
+    idle_frame_time_ = 0.0f;
+    idle_active_ = false;
+    walk_frame_ = 0;
+    walk_frame_time_ = 0.0f;
+    walk_active_ = false;
+    facing_left_ = false;
+}
+
 SDL_Rect Player::GetBodyRect() const {
     int draw_w = base_texture_.width > 0 ? base_texture_.width : 48;
     int draw_h = base_texture_.height > 0 ? base_texture_.height : 64;
