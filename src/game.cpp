@@ -246,6 +246,19 @@ void DrawFilledCircle(SDL_Renderer* renderer, int cx, int cy, int radius) {
     }
 }
 
+void DrawFilledEllipse(SDL_Renderer* renderer, int cx, int cy, int rx, int ry) {
+    if (rx <= 0 || ry <= 0) {
+        return;
+    }
+
+    for (int dy = -ry; dy <= ry; ++dy) {
+        const double y_ratio = static_cast<double>(dy) / static_cast<double>(ry);
+        const double ellipse_row = std::max(0.0, 1.0 - y_ratio * y_ratio);
+        const int dx_limit = static_cast<int>(rx * std::sqrt(ellipse_row));
+        SDL_RenderDrawLine(renderer, cx - dx_limit, cy + dy, cx + dx_limit, cy + dy);
+    }
+}
+
 bool RectsIntersect(const SDL_Rect& a, const SDL_Rect& b) {
     return SDL_HasIntersection(&a, &b) == SDL_TRUE;
 }
@@ -397,37 +410,19 @@ void PopulateSpikes(const std::vector<Platform>& platforms, std::vector<SpikeTra
     constexpr int spike_h = 26;
     constexpr int ground_y = kWindowHeight - 40;
 
-    struct BottomSpikePhase {
-        int start_x = 0;
-        int end_x = 0;
-        int spacing = 0;
-        int cluster_size = 0;
-        int jitter = 0;
+    const int bottom_spike_xs[] = {
+        820, 1320, 1880, 2380, 2940, 3480, 3980, 4440, 4920
     };
 
-    const BottomSpikePhase bottom_phases[] = {
-        {760, 1400, 360, 1, 42},
-        {1500, 2600, 290, 2, 58},
-        {2700, 3900, 230, 3, 70},
-        {4000, kLevelWidth - 260, 185, 4, 64}
-    };
-
-    for (const BottomSpikePhase& phase : bottom_phases) {
-        int cluster_index = 0;
-        for (int x = phase.start_x; x < phase.end_x; x += phase.spacing) {
-            const int offset = ((cluster_index * 37) % (phase.jitter + 1)) - (phase.jitter / 2);
-            for (int i = 0; i < phase.cluster_size; ++i) {
-                SpikeTrap spike;
-                spike.rect = SDL_Rect{
-                    x + offset + i * (spike_w + 6),
-                    ground_y - spike_h,
-                    spike_w,
-                    spike_h
-                };
-                spikes.push_back(spike);
-            }
-            ++cluster_index;
-        }
+    for (int x : bottom_spike_xs) {
+        SpikeTrap spike;
+        spike.rect = SDL_Rect{
+            x,
+            ground_y - spike_h,
+            spike_w,
+            spike_h
+        };
+        spikes.push_back(spike);
     }
 
     int elevated_spike_count = 0;
@@ -437,7 +432,7 @@ void PopulateSpikes(const std::vector<Platform>& platforms, std::vector<SpikeTra
         }
 
         const int phase = DifficultyPhaseForX(platform.rect.x);
-        const int platform_spike_chance[] = {16, 24, 34, 46};
+        const int platform_spike_chance[] = {6, 9, 12, 15};
         if (chance_dist(rng) >= platform_spike_chance[phase]) {
             continue;
         }
@@ -452,7 +447,7 @@ void PopulateSpikes(const std::vector<Platform>& platforms, std::vector<SpikeTra
         spikes.push_back(spike);
         ++elevated_spike_count;
 
-        if (elevated_spike_count >= 14) {
+        if (elevated_spike_count >= 4) {
             break;
         }
     }
@@ -1054,17 +1049,25 @@ void Game::Render() {
         SDL_Rect rect = gas.rect;
         rect.x -= static_cast<int>(camera_x_);
 
-        SDL_SetRenderDrawColor(renderer_, 126, 224, 62, 92);
-        SDL_Rect base{rect.x, rect.y + rect.h / 3, rect.w, (rect.h * 2) / 3};
-        SDL_RenderFillRect(renderer_, &base);
+        SDL_SetRenderDrawColor(renderer_, 116, 210, 58, 52);
+        DrawFilledEllipse(renderer_, rect.x + rect.w / 2, rect.y + (rect.h * 3) / 4, rect.w / 2, rect.h / 3);
 
-        SDL_SetRenderDrawColor(renderer_, 178, 255, 86, 120);
-        DrawFilledCircle(renderer_, rect.x + rect.w / 5, rect.y + rect.h / 2, rect.h / 2);
-        DrawFilledCircle(renderer_, rect.x + rect.w / 2, rect.y + rect.h / 3, rect.h / 2);
-        DrawFilledCircle(renderer_, rect.x + (rect.w * 4) / 5, rect.y + rect.h / 2, rect.h / 2);
+        SDL_SetRenderDrawColor(renderer_, 152, 245, 82, 78);
+        DrawFilledEllipse(renderer_, rect.x + rect.w / 4, rect.y + rect.h / 2, rect.w / 4, rect.h / 3);
+        DrawFilledEllipse(renderer_, rect.x + rect.w / 2, rect.y + rect.h / 3, rect.w / 3, rect.h / 3);
+        DrawFilledEllipse(renderer_, rect.x + (rect.w * 3) / 4, rect.y + rect.h / 2, rect.w / 4, rect.h / 3);
 
-        SDL_SetRenderDrawColor(renderer_, 92, 150, 44, 140);
-        SDL_RenderDrawLine(renderer_, rect.x + 8, rect.y + rect.h - 5, rect.x + rect.w - 8, rect.y + rect.h - 5);
+        SDL_SetRenderDrawColor(renderer_, 215, 255, 130, 42);
+        DrawFilledEllipse(renderer_, rect.x + rect.w / 3, rect.y + rect.h / 3, rect.w / 5, rect.h / 5);
+        DrawFilledEllipse(renderer_, rect.x + (rect.w * 2) / 3, rect.y + rect.h / 4, rect.w / 6, rect.h / 6);
+
+        SDL_SetRenderDrawColor(renderer_, 82, 140, 44, 92);
+        for (int i = 0; i < 4; ++i) {
+            const int x0 = rect.x + 12 + i * (rect.w - 24) / 4;
+            const int y0 = rect.y + rect.h - 8 - (i % 2) * 5;
+            SDL_RenderDrawLine(renderer_, x0, y0, x0 + 16, y0 - 8);
+            SDL_RenderDrawLine(renderer_, x0 + 16, y0 - 8, x0 + 34, y0 - 4);
+        }
     }
     SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_NONE);
 
