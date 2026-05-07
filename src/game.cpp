@@ -622,6 +622,8 @@ void DrawGroundPhaseBands(SDL_Renderer* renderer, float camera_x) {
 }
 // Draws cave
 void DrawCavePortal(SDL_Renderer* renderer, const SDL_Rect& portal, float camera_x) {
+    // This cave is the visual version of cave_portal_. When the player overlaps
+    // that same rectangle in Update(), the boss arena loads.
     SDL_Rect cave = portal;
     cave.x -= static_cast<int>(camera_x);
     if (!RectOnScreen(cave, 120)) {
@@ -650,6 +652,8 @@ void DrawCavePortal(SDL_Renderer* renderer, const SDL_Rect& portal, float camera
 }
 // platforms in boss arena.
 std::vector<Platform> BuildBossArenaPlatforms() {
+    // Boss platforms are kept separate from forest platforms so entering the
+    // portal can swap the collision layout cleanly.
     std::vector<Platform> platforms;
     constexpr int ground_y = kWindowHeight - 40;
     platforms.push_back({ SDL_Rect{0, ground_y, kBossArenaWidth, 40} });
@@ -746,6 +750,9 @@ bool Game::Init() {
     if (!jump_textures_.Empty()) player_.SetJumpTextures(jump_textures_);
     if (!punch_textures_.Empty()) player_.SetPunchTextures(punch_textures_);
     if (!heel_kick_textures_.Empty()) player_.SetHeelKickTextures(heel_kick_textures_);
+
+    // Give the snake boss its three BMP assets. The boss stores the handles,
+    // while Game still destroys them in Shutdown().
     boss_.SetTextures(snake_head_texture_, snake_body_texture_, snake_tail_texture_);
 
     ResetRun();
@@ -760,6 +767,9 @@ void Game::ResetRun() {
     in_boss_arena_ = false;
     player_damage_cooldown_ = 0.0f;
     thorn_vine_damage_timer_ = 0.0f;
+
+    // This portal rectangle controls where the player overlaps to enter the
+    // boss arena. The commented line below is the normal end-of-level position.
     cave_portal_ = SDL_Rect{145,160,112,120}; // comment this out to interact with boss area normally.
     // cave_portal_ = SDL_Rect{kLevelWidth - 145, kWindowHeight - 160, 112, 120};
 
@@ -774,19 +784,28 @@ void Game::ResetRun() {
     PopulatePoisonGas(poison_gas_);
     PopulateDeadlyVines(forest_platforms_, deadly_vines_);
     PopulateSquirrels(forest_platforms_, squirrels_, squirrel_textures_, acorn_textures_);
+
+    // Build and reset the boss pieces even before entering the arena so the
+    // transition can happen instantly when the portal is touched.
     boss_platforms_ = BuildBossArenaPlatforms();
     boss_.Reset(760.0f, kWindowHeight - 40.0f);
 }
 
 void Game::EnterBossArena() {
+    // Switch the game from forest mode to boss mode.
     in_boss_arena_ = true;
+
+    // Clear held/pressed input and timers so the player starts the fight clean.
     input_ = InputState{};
     camera_x_ = 0.0f;
     player_damage_cooldown_ = 0.0f;
     thorn_vine_damage_timer_ = 0.0f;
 
+    // Replace forest collision with the boss arena layout.
     platforms_ = boss_platforms_;
     player_.SetGroundY(kWindowHeight - 40.0f);
+
+    // Move the player and snake to their starting positions in the abyss.
     player_.ResetForRun(120.0f, kWindowHeight - 40.0f);
     boss_.Reset(760.0f, kWindowHeight - 40.0f);
 }
@@ -827,6 +846,7 @@ void Game::HandleEvents() {
 
 void Game::Update(float dt) {
     if (in_boss_arena_) {
+        // Once the portal has been entered, the boss arena owns gameplay updates.
         UpdateBossArena(dt);
         return;
     }
@@ -844,6 +864,7 @@ void Game::Update(float dt) {
     SDL_Rect player_rect = player_.GetBodyRect();
     const SDL_Rect attack_rect = player_.GetAttackRect();
 
+    // This is the actual overlap test that sends the player to the boss arena.
     if (RectsIntersect(player_rect, cave_portal_)) {
         EnterBossArena();
         return;
@@ -953,9 +974,12 @@ void Game::Update(float dt) {
 }
 
 void Game::UpdateBossArena(float dt) {
+    // Player movement and boss arena platform collision happen before the boss
+    // checks the player's new position.
     player_.Update(dt, input_);
     player_.CheckPlatformCollisions(platforms_);
 
+    // Keep the player inside the boss arena's horizontal bounds.
     if (player_.GetX() < 20.0f) {
         player_.SetPosition(20.0f, player_.GetY());
     } else if (player_.GetX() > kBossArenaWidth - 78.0f) {
@@ -968,9 +992,12 @@ void Game::UpdateBossArena(float dt) {
 
     SDL_Rect player_rect = player_.GetBodyRect();
     const SDL_Rect attack_rect = player_.GetAttackRect();
+
+    // Update the snake, then let the player's current attack hit it.
     boss_.Update(dt, player_rect);
     boss_.TryTakeHit(attack_rect);
 
+    // Contact damage comes from the snake boss during its charging phase.
     float knockback_x = 0.0f;
     if (player_damage_cooldown_ <= 0.0f &&
         boss_.CheckContactHitPlayer(player_rect, &knockback_x)) {
@@ -980,10 +1007,12 @@ void Game::UpdateBossArena(float dt) {
     }
 
     if (player_.GetHealth() <= 0) {
+        // Death sends the player back to the forest start.
         ResetRun();
         return;
     }
 
+    // Camera follows the player, but clamps to the smaller boss arena width.
     camera_x_ = player_.GetX() - (kWindowWidth / 2.0f);
     if (camera_x_ < 0.0f) {
         camera_x_ = 0.0f;
@@ -997,6 +1026,7 @@ void Game::UpdateBossArena(float dt) {
 
 void Game::Render() {
     if (in_boss_arena_) {
+        // Boss mode has a completely separate render path and background.
         RenderBossArena();
         return;
     }
@@ -1250,6 +1280,7 @@ void Game::Render() {
         squirrel.Render(renderer_, camera_x_);
     }
 
+    // Draw the cave portal at the same rectangle used by the overlap test.
     DrawCavePortal(renderer_, cave_portal_, camera_x_);
 
     player_.Render(renderer_, camera_x_);
@@ -1263,9 +1294,11 @@ void Game::Render() {
 }
 
 void Game::RenderBossArena() {
+    // Dark abyss background.
     SDL_SetRenderDrawColor(renderer_, 5, 4, 12, 255);
     SDL_RenderClear(renderer_);
 
+    // Subtle star/noise dots in the background.
     SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_BLEND);
     for (int i = 0; i < 70; ++i) {
         const int x = (i * 137) % kWindowWidth;
@@ -1284,6 +1317,7 @@ void Game::RenderBossArena() {
     SDL_Rect ground{0, kWindowHeight - 40, kWindowWidth, 40};
     SDL_RenderFillRect(renderer_, &ground);
 
+    // Draw elevated arena platforms. The wide ground platform is already drawn.
     for (const Platform& platform : platforms_) {
         if (platform.rect.h >= 30) {
             continue;
@@ -1302,6 +1336,7 @@ void Game::RenderBossArena() {
         SDL_RenderFillRect(renderer_, &glow);
     }
 
+    // Boss and player are drawn after the arena so they appear in front.
     boss_.Render(renderer_, camera_x_);
     player_.Render(renderer_, camera_x_);
 
@@ -1310,6 +1345,7 @@ void Game::RenderBossArena() {
         DrawHeart(renderer_, 20 + i * 36, 20, 4, fill_units);
     }
 
+    // Boss health bar across the top of the arena.
     SDL_SetRenderDrawColor(renderer_, 38, 24, 56, 255);
     SDL_Rect boss_bar_back{250, 24, 460, 18};
     SDL_RenderFillRect(renderer_, &boss_bar_back);
@@ -1337,6 +1373,8 @@ void Game::Shutdown() {
     DestroyTextureSet(squirrel_textures_);
     DestroyTextureSet(acorn_textures_);
     DestroyTextureSet(spike_texture_);
+
+    // These are the snake boss BMP textures loaded in Init().
     DestroyTextureSet(snake_head_texture_);
     DestroyTextureSet(snake_body_texture_);
     DestroyTextureSet(snake_tail_texture_);
