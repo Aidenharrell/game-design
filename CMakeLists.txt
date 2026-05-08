@@ -5,6 +5,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(SDL2 CONFIG REQUIRED)
+find_package(SDL2_ttf CONFIG REQUIRED)
 
 add_executable(AngryPanda
     src/main.cpp
@@ -19,4 +20,4 @@ file(COPY "${CMAKE_SOURCE_DIR}/assets"
      DESTINATION ${CMAKE_BINARY_DIR})
 
 target_include_directories(AngryPanda PRIVATE src)
-target_link_libraries(AngryPanda PRIVATE SDL2::SDL2main SDL2::SDL2)
+target_link_libraries(AngryPanda PRIVATE SDL2::SDL2main SDL2::SDL2 SDL2_ttf::SDL2_ttf)

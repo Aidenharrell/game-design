@@ -9,6 +9,7 @@
 #include <random>
 #include <string>
 #include <vector>
+#include <SDL_ttf.h>
 
 namespace fs = std::filesystem;
 
@@ -53,6 +54,16 @@ int DifficultyPhaseForX(int x) {
         }
     }
     return 0;
+}
+
+static SDL_Texture* CreateTextTexture(SDL_Renderer* renderer, TTF_Font* font, const std::string& text)
+{
+    if(!font) return nullptr;
+    SDL_Color white = {255, 255, 255, 255};
+    SDL_Surface* surface = TTF_RenderText_Solid(font, text.c_str(), white);
+    SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
+    SDL_FreeSurface(surface);
+    return texture;
 }
 
 SDL_Texture* LoadTextureBMP(SDL_Renderer* renderer, const fs::path& path, int* out_w, int* out_h, bool use_black_colorkey) {
@@ -687,6 +698,23 @@ bool Game::Init() {
         return false;
     }
 
+    if(TTF_Init() == -1)
+    {
+        std::cerr << "TTF_Init Failed: " << TTF_GetError() << "\n";
+        return false;
+    }
+
+    fs::path front_path = ResolveAssetsDir() / "arial.ttf";
+    fs::path fontPath = ResolveAssetsDir() / "arial.ttf";
+    menu_font_ = TTF_OpenFont(fontPath.string().c_str(), 24);
+    title_text_ = CreateTextTexture(renderer_, menu_font_, "Angry Panda");
+    level1_text_ = CreateTextTexture(renderer_, menu_font_, "LEVEL 1");
+    quit_text_ = CreateTextTexture(renderer_, menu_font_, "QUIT");
+    pause_text_ = CreateTextTexture(renderer_, menu_font_, "PAUSE");
+    in_menu_ = true;
+    paused_ = false;
+    pause_button_ = {(kWindowWidth - 140) / 2, 10, 140, 40};
+
     const fs::path assets_dir = ResolveAssetsDir();
 
     player_texture_ = LoadSingleTexture(renderer_, assets_dir / "Opanda.bmp", false);
@@ -762,6 +790,8 @@ bool Game::Init() {
 }
 
 void Game::ResetRun() {
+    score_ = 0;
+    max_x_reached_ = 0;
     input_ = InputState{};
     camera_x_ = 0.0f;
     in_boss_arena_ = false;
@@ -829,22 +859,63 @@ void Game::Run() {
 void Game::HandleEvents() {
     SDL_Event event;
     input_.ClearFrame();
-
     while (SDL_PollEvent(&event)) {
         if (event.type == SDL_QUIT) {
-            running_ = false;
-        } else if (event.type == SDL_KEYDOWN && !event.key.repeat) {
-            input_.OnKeyDown(event.key.keysym.sym);
-            if (event.key.keysym.sym == SDLK_h) {
-                player_.TakeDamage(2);
+            running_ = false;}
+        if(event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_LEFT)
+        {
+            SDL_Point mouse{event.button.x, event.button.y};
+            if(in_menu_)
+            {
+                if(SDL_PointInRect(&mouse, &level1_button_))
+                {
+                    in_menu_ = false;
+                    paused_ = false;
+                }
+                else if(SDL_PointInRect(&mouse, &quit_button_))
+                {
+                    running_ = false;
+                }
             }
-        } else if (event.type == SDL_KEYUP) {
-            input_.OnKeyUp(event.key.keysym.sym);
+                else
+                {
+                    if(SDL_PointInRect(&mouse, &pause_button_))
+                    {
+                        paused_ = !paused_;
+                    }
+                }        
+        }
+        else if(!in_menu_)
+        {
+            if(event.type == SDL_KEYDOWN && !event.key.repeat)
+            {
+                if(!paused_)
+                {
+                    input_.OnKeyDown(event.key.keysym.sym);
+                }
+            }
+            else if(event.type == SDL_KEYUP)
+            {
+                if(!paused_)
+                {
+                    input_.OnKeyUp(event.key.keysym.sym);
+                }
+            }
         }
     }
 }
 
 void Game::Update(float dt) {
+    if(in_menu_ || paused_) return;
+    if(!in_menu_ && !paused_)
+    {
+        if(player_.GetX() > max_x_reached_)
+        {
+            max_x_reached_ = player_.GetX();
+            score_ = max_x_reached_;
+        }
+    }
+
     if (in_boss_arena_) {
         // Once the portal has been entered, the boss arena owns gameplay updates.
         UpdateBossArena(dt);
@@ -957,9 +1028,15 @@ void Game::Update(float dt) {
         }
     }
 
-    if (player_.GetHealth() <= 0) {
+    if (player_.GetHealth() <= 0 && !has_died_) {
+        has_died_ = true;
+        if(score_ > high_score_)
+        {
+            high_score_ = score_;
+        }
         ResetRun();
-        return;
+        in_menu_ = true;
+        paused_ = false;
     }
 
     camera_x_ = player_.GetX() - (kWindowWidth / 2.0f);
@@ -971,6 +1048,8 @@ void Game::Update(float dt) {
     if (camera_x_ > max_camera_x) {
         camera_x_ = max_camera_x;
     }
+
+    has_died_ = false;
 }
 
 void Game::UpdateBossArena(float dt) {
@@ -1025,6 +1104,43 @@ void Game::UpdateBossArena(float dt) {
 }
 
 void Game::Render() {
+    if(in_menu_)
+    {
+        SDL_SetRenderDrawColor(renderer_, 25, 25, 30, 255);
+        SDL_RenderClear(renderer_);
+        SDL_Rect level1 = {350, 200, 260, 60};
+        SDL_Rect quit = {350, 300, 260, 60};
+        SDL_SetRenderDrawColor(renderer_, 0, 180, 0, 255);
+        SDL_RenderFillRect(renderer_, &level1_button_);
+        SDL_RenderFillRect(renderer_, &quit_button_);
+        SDL_SetRenderDrawColor(renderer_, 200, 50, 50, 255);
+        if(title_text_)
+        {
+            SDL_Rect textRect = {320, 80, 320, 80};
+            SDL_RenderCopy(renderer_, title_text_, nullptr, &textRect);  
+        }
+        std::string hsText = "High Score: " + std::to_string(high_score_);
+        SDL_Texture* hs_tex = CreateTextTexture(renderer_, menu_font_, hsText);
+        if(hs_tex)
+        {
+            SDL_Rect hsRect = {360, 160, 240, 40};
+            SDL_RenderCopy(renderer_, hs_tex, nullptr, &hsRect);
+            SDL_DestroyTexture(hs_tex);
+        }
+        if(level1_text_)
+        {
+            SDL_Rect textRect = {level1.x + 60, level1.y + 15, 150, 30};
+            SDL_RenderCopy(renderer_, level1_text_, NULL, &textRect);
+        }
+        if(quit_text_)
+        {
+            SDL_Rect textRect = {quit.x + 90, quit.y + 15, 100, 30};
+            SDL_RenderCopy(renderer_, quit_text_, NULL, &textRect);
+        }
+        SDL_RenderPresent(renderer_);
+        return;
+    }
+
     if (in_boss_arena_) {
         // Boss mode has a completely separate render path and background.
         RenderBossArena();
@@ -1290,6 +1406,34 @@ void Game::Render() {
         DrawHeart(renderer_, 20 + i * 36, 20, 4, fill_units);
     }
 
+    SDL_Color white = {255, 255, 255, 255};
+    std::string scoreText = "Score: " + std::to_string(score_);
+    SDL_Texture* scoreTex = CreateTextTexture(renderer_, menu_font_, scoreText);
+    SDL_Rect rect = {20, 60, 160, 30};
+    SDL_RenderCopy(renderer_, scoreTex, nullptr, &rect);
+    SDL_DestroyTexture(scoreTex);
+    SDL_SetRenderDrawColor(renderer_, 200, 50, 50, 225);
+    SDL_RenderFillRect(renderer_, &pause_button_);
+    if(pause_text_)
+    {
+        SDL_Rect textRect = {pause_button_.x + 20, pause_button_.y + 10, pause_button_.w - 40, pause_button_.h - 20}; 
+        SDL_RenderCopy(renderer_, pause_text_, nullptr, &textRect);     
+    };
+
+    if(paused_)
+    {
+        SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_BLEND);
+        SDL_SetRenderDrawColor(renderer_, 0, 0, 0, 150);
+        SDL_Rect overlay = {0, 0, kWindowWidth, kWindowHeight};
+        SDL_RenderFillRect(renderer_, &overlay);
+        SDL_SetRenderDrawColor(renderer_, 200, 50, 50, 225);
+        SDL_RenderFillRect(renderer_, &pause_button_);
+        if(pause_text_)
+        {
+            SDL_Rect textRect = {pause_button_.x + 20, pause_button_.y + 10, pause_button_.w - 40, pause_button_.h - 20};
+            SDL_RenderCopy(renderer_, pause_text_, nullptr, &textRect);
+        }
+    }
     SDL_RenderPresent(renderer_);
 }
 
@@ -1387,6 +1531,12 @@ void Game::Shutdown() {
         SDL_DestroyWindow(window_);
         window_ = nullptr;
     }
+
+    if(level1_text_) SDL_DestroyTexture(level1_text_);
+    if(quit_text_) SDL_DestroyTexture(quit_text_);
+    if(pause_text_) SDL_DestroyTexture(pause_text_);
+    if(menu_font_) TTF_CloseFont(menu_font_);
+    TTF_Quit();
 
     SDL_Quit();
 }

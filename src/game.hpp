@@ -7,6 +7,7 @@
 #include "platform.hpp"
 #include "player.hpp"
 #include "texture_set.hpp"
+#include <SDL_ttf.h>
 
 struct Vine {
     SDL_Rect rect{};
@@ -76,6 +77,21 @@ private:
     // Forest-level portal rectangle that sends the player into the boss arena.
     SDL_Rect cave_portal_{};
     bool running_ = false;
+
+    bool in_menu_ = false;
+    bool paused_ = false;
+    TTF_Font* menu_font_ = nullptr;
+    SDL_Texture* level1_text_ = nullptr;
+    SDL_Texture* quit_text_ = nullptr;
+    SDL_Texture* pause_text_ = nullptr;
+    SDL_Rect level1_button_ = {350, 200, 260, 60};
+    SDL_Rect quit_button_ = {350, 300, 260, 60};
+    SDL_Rect pause_button_ = {350, 220, 260, 80};
+    int score_ = 0;
+    int max_x_reached_ = 0;
+    SDL_Texture* title_text_ = nullptr;
+    bool has_died_ = false;
+    int high_score_ = 0;
 
     // Chooses whether Update/Render use the forest level or boss arena.
     bool in_boss_arena_ = false;
