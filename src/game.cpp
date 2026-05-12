@@ -16,10 +16,16 @@ namespace fs = std::filesystem;
 namespace {
 constexpr int kWindowWidth = 960;
 constexpr int kWindowHeight = 540;
-constexpr int kLevelWidth = 5200;
+constexpr int kLevelWidth = 9600;
 constexpr int kBossArenaWidth = 1120;
 constexpr float kPlayerHitCooldown = 0.9f;
 constexpr float kThornVineDamageInterval = 1.0f;
+constexpr float kDamageFlashDuration = 0.32f;
+constexpr int kRagePhaseStart = 7600;
+constexpr float kRageTransitionWidth = 720.0f;
+constexpr int kRageCheckpointPlatformX = kRagePhaseStart - 170;
+constexpr int kRageCheckpointPlatformY = 340;
+constexpr int kRageCheckpointPlatformW = 210;
 
 struct TreeVisual {
     int x = 0;
@@ -40,10 +46,11 @@ struct LevelPhase {
 };
 
 constexpr LevelPhase kLevelPhases[] = {
-    {0, 1400, 75, 110, 58},
-    {1400, 2600, 86, 104, 56},
-    {2600, 3900, 99, 94, 54},
-    {3900, kLevelWidth, 112, 84, 54}
+    {0, 1900, 75, 110, 58},
+    {1900, 3700, 86, 104, 56},
+    {3700, 5700, 99, 94, 54},
+    {5700, kRagePhaseStart, 112, 84, 54},
+    {kRagePhaseStart, kLevelWidth, 82, 38, 46}
 };
 constexpr int kLevelPhaseCount = sizeof(kLevelPhases) / sizeof(kLevelPhases[0]);
 
@@ -56,11 +63,42 @@ int DifficultyPhaseForX(int x) {
     return 0;
 }
 
+bool IsRagePhaseX(int x) {
+    return x >= kRagePhaseStart;
+}
+
+float RageBlendForX(float x) {
+    const float transition_start = static_cast<float>(kRagePhaseStart) - kRageTransitionWidth;
+    return std::clamp((x - transition_start) / kRageTransitionWidth, 0.0f, 1.0f);
+}
+
+Uint8 BlendChannel(int normal, int rage, float blend) {
+    const float value = static_cast<float>(normal) + (static_cast<float>(rage - normal) * blend);
+    return static_cast<Uint8>(std::clamp(static_cast<int>(std::round(value)), 0, 255));
+}
+
+void SetBlendDrawColor(SDL_Renderer* renderer,
+                       int normal_r,
+                       int normal_g,
+                       int normal_b,
+                       int rage_r,
+                       int rage_g,
+                       int rage_b,
+                       float blend,
+                       Uint8 alpha = 255) {
+    SDL_SetRenderDrawColor(renderer,
+                           BlendChannel(normal_r, rage_r, blend),
+                           BlendChannel(normal_g, rage_g, blend),
+                           BlendChannel(normal_b, rage_b, blend),
+                           alpha);
+}
+
 static SDL_Texture* CreateTextTexture(SDL_Renderer* renderer, TTF_Font* font, const std::string& text)
 {
-    if(!font) return nullptr;
     SDL_Color white = {255, 255, 255, 255};
-    SDL_Surface* surface = TTF_RenderText_Solid(font, text.c_str(), white);
+    if(!font) return nullptr;
+    SDL_Surface* surface = TTF_RenderText_Blended(font, text.c_str(), white);
+    if (!surface) return nullptr;
     SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
     SDL_FreeSurface(surface);
     return texture;
@@ -262,6 +300,7 @@ void DrawFilledCircle(SDL_Renderer* renderer, int cx, int cy, int radius) {
     }
 }
 
+
 bool RectsIntersect(const SDL_Rect& a, const SDL_Rect& b) {
     return SDL_HasIntersection(&a, &b) == SDL_TRUE;
 }
@@ -287,6 +326,8 @@ void GenerateForestPlatforms(std::vector<Platform>& platforms) {
     platforms.push_back({ SDL_Rect{340, 390, 140, 18} });
     platforms.push_back({ SDL_Rect{500, 340, 140, 18} });
     platforms.push_back({ SDL_Rect{660, 290, 140, 18} });
+    platforms.push_back({ SDL_Rect{850, 420, 135, 18} });
+    platforms.push_back({ SDL_Rect{1030, 360, 130, 18} });
 
     std::mt19937 rng(4000);
     int tree_x = 950;
@@ -295,16 +336,16 @@ void GenerateForestPlatforms(std::vector<Platform>& platforms) {
 
     while (tree_x < kLevelWidth - 220) {
         const int phase = DifficultyPhaseForX(tree_x);
-        const int gap_min[] = {240, 260, 285, 315};
-        const int gap_max[] = {315, 345, 380, 420};
-        const int low_min[] = {330, 315, 300, 285};
-        const int low_max[] = {390, 375, 360, 340};
-        const int mid_min[] = {250, 235, 215, 195};
-        const int mid_max[] = {315, 295, 275, 250};
-        const int high_min[] = {180, 165, 145, 125};
-        const int high_max[] = {245, 225, 205, 185};
-        const int width_min[] = {120, 110, 98, 86};
-        const int width_max[] = {160, 145, 130, 115};
+        const int gap_min[] = {240, 260, 285, 315, 260};
+        const int gap_max[] = {315, 345, 360, 385, 320};
+        const int low_min[] = {330, 315, 300, 285, 275};
+        const int low_max[] = {390, 375, 360, 340, 330};
+        const int mid_min[] = {250, 235, 215, 195, 185};
+        const int mid_max[] = {315, 295, 275, 250, 240};
+        const int high_min[] = {180, 165, 145, 125, 120};
+        const int high_max[] = {245, 225, 205, 185, 175};
+        const int width_min[] = {120, 110, 108, 100, 96};
+        const int width_max[] = {160, 145, 140, 128, 122};
 
         std::uniform_int_distribution<int> trunk_gap(gap_min[phase], gap_max[phase]);
         std::uniform_int_distribution<int> low_y(low_min[phase], low_max[phase]);
@@ -337,9 +378,11 @@ void GenerateForestPlatforms(std::vector<Platform>& platforms) {
         tree_x += trunk_gap(rng);
     }
 
-    platforms.push_back({ SDL_Rect{4650, 250, 130, 18} });
-    platforms.push_back({ SDL_Rect{4850, 210, 120, 18} });
-    platforms.push_back({ SDL_Rect{5030, 280, 135, 18} });
+    platforms.push_back({ SDL_Rect{4280, 315, 150, 18} });
+    platforms.push_back({ SDL_Rect{kRageCheckpointPlatformX, kRageCheckpointPlatformY, kRageCheckpointPlatformW, 18} });
+    platforms.push_back({ SDL_Rect{kLevelWidth - 550, 250, 130, 18} });
+    platforms.push_back({ SDL_Rect{kLevelWidth - 350, 210, 120, 18} });
+    platforms.push_back({ SDL_Rect{kLevelWidth - 170, 280, 135, 18} });
 }
 
 std::vector<TreeVisual> BuildTreeVisualsFromPlatforms(const std::vector<Platform>& platforms) {
@@ -410,7 +453,7 @@ void PopulateVines(const std::vector<Platform>& platforms, std::vector<Vine>& vi
         vine.rect = SDL_Rect{ vine_x, vine_y, 6, vine_h };
         vines.push_back(vine);
 
-        if (vines.size() >= 18) {
+        if (vines.size() >= 30) {
             break;
         }
     }
@@ -424,19 +467,20 @@ void PopulateSpikes(const std::vector<Platform>& platforms, std::vector<SpikeTra
     constexpr int spike_h = 26;
     constexpr int ground_y = kWindowHeight - 40;
 
-    const int bottom_spike_xs[] = {
-        820, 1320, 1880, 2380, 2940, 3480, 3980, 4440, 4920
-    };
-
-    for (int x : bottom_spike_xs) {
+    int bottom_spike_index = 0;
+    for (int x = 820; x < kLevelWidth - 340; ++bottom_spike_index) {
+        const int phase = DifficultyPhaseForX(x);
+        const int bottom_spacing[] = {620, 560, 500, 450, 390};
+        const int offset = ((bottom_spike_index * 83) % 95) - 47;
         SpikeTrap spike;
         spike.rect = SDL_Rect{
-            x,
+            x + offset,
             ground_y - spike_h,
             spike_w,
             spike_h
         };
         spikes.push_back(spike);
+        x += bottom_spacing[phase];
     }
 
     int elevated_spike_count = 0;
@@ -446,7 +490,7 @@ void PopulateSpikes(const std::vector<Platform>& platforms, std::vector<SpikeTra
         }
 
         const int phase = DifficultyPhaseForX(platform.rect.x);
-        const int platform_spike_chance[] = {6, 9, 12, 15};
+        const int platform_spike_chance[] = {5, 8, 11, 14, 20};
         if (chance_dist(rng) >= platform_spike_chance[phase]) {
             continue;
         }
@@ -461,7 +505,7 @@ void PopulateSpikes(const std::vector<Platform>& platforms, std::vector<SpikeTra
         spikes.push_back(spike);
         ++elevated_spike_count;
 
-        if (elevated_spike_count >= 4) {
+        if (elevated_spike_count >= 12) {
             break;
         }
     }
@@ -481,9 +525,10 @@ void PopulatePoisonGas(std::vector<PoisonGasCloud>& poison_gas) {
     };
 
     const GasPhase gas_phases[] = {
-        {1500, 2600, 430, 92, 34, 52},
-        {2700, 3900, 340, 128, 44, 70},
-        {4000, kLevelWidth - 260, 270, 168, 56, 84}
+        {1800, 3300, 500, 118, 36, 62},
+        {3600, 5600, 410, 154, 46, 78},
+        {5900, kRagePhaseStart - 220, 330, 202, 58, 94},
+        {kRagePhaseStart + 120, kLevelWidth - 300, 280, 214, 64, 94}
     };
 
     for (const GasPhase& phase : gas_phases) {
@@ -517,7 +562,7 @@ void PopulateDeadlyVines(const std::vector<Platform>& platforms, std::vector<Dea
         }
 
         const int phase = DifficultyPhaseForX(platform.rect.x);
-        const int deadly_vine_chance[] = {0, 18, 30, 44};
+        const int deadly_vine_chance[] = {0, 18, 30, 44, 56};
         if (chance_dist(rng) >= deadly_vine_chance[phase]) {
             continue;
         }
@@ -525,6 +570,9 @@ void PopulateDeadlyVines(const std::vector<Platform>& platforms, std::vector<Dea
         const int vine_x = platform.rect.x + platform.rect.w / 2 + (side_dist(rng) == 0 ? -32 : 32);
         const int vine_y = platform.rect.y + 8;
         int vine_h = 95 + phase * 18 + length_bonus_dist(rng);
+        if (IsRagePhaseX(platform.rect.x)) {
+            vine_h += 24;
+        }
         const int max_h = (kWindowHeight - 40) - vine_y;
         vine_h = std::min(vine_h, max_h);
         if (vine_h < 45) {
@@ -536,7 +584,7 @@ void PopulateDeadlyVines(const std::vector<Platform>& platforms, std::vector<Dea
         deadly_vines.push_back(vine);
         ++deadly_vine_count;
 
-        if (deadly_vine_count >= 16) {
+        if (deadly_vine_count >= 34) {
             break;
         }
     }
@@ -549,24 +597,69 @@ void PopulateSquirrels(const std::vector<Platform>& platforms,
     squirrels.clear();
     std::mt19937 rng(2026);
     std::uniform_int_distribution<int> chance_dist(0, 99);
+    constexpr int normal_squirrel_cap = 8;
+    constexpr int rage_squirrel_cap = 5;
+    constexpr int min_rage_squirrels = 3;
+    int normal_squirrel_count = 0;
+    int rage_squirrel_count = 0;
+    std::vector<int> spawned_centers;
+    std::vector<const Platform*> rage_candidates;
 
-    for (const Platform& platform : platforms) {
-        if (platform.rect.h >= 30 || platform.rect.y > 340 || platform.rect.x < 1100 || platform.rect.x > 4700) {
-            continue;
-        }
-        if (chance_dist(rng) >= 18) {
-            continue;
+    auto add_squirrel = [&](const Platform& platform, bool raging) {
+        const int center_x = platform.rect.x + platform.rect.w / 2;
+        for (int spawned_center : spawned_centers) {
+            if (std::abs(spawned_center - center_x) < 90) {
+                return false;
+            }
         }
 
         SquirrelEnemy squirrel;
-        squirrel.SetPosition(static_cast<float>(platform.rect.x + platform.rect.w / 2), static_cast<float>(platform.rect.y));
+        squirrel.SetPosition(static_cast<float>(center_x), static_cast<float>(platform.rect.y));
         squirrel.SetSquirrelTextures(squirrel_textures);
         squirrel.SetAcornTextures(acorn_textures);
+        squirrel.SetRaging(raging);
         squirrels.push_back(squirrel);
+        spawned_centers.push_back(center_x);
 
-        if (squirrels.size() >= 6) {
+        if (raging) {
+            ++rage_squirrel_count;
+        } else {
+            ++normal_squirrel_count;
+        }
+        return true;
+    };
+
+    for (const Platform& platform : platforms) {
+        if (platform.rect.h >= 30 || platform.rect.y > 340 || platform.rect.x < 1100 || platform.rect.x > kLevelWidth - 520) {
+            continue;
+        }
+        const bool raging = IsRagePhaseX(platform.rect.x);
+        if (raging) {
+            rage_candidates.push_back(&platform);
+        }
+
+        if ((!raging && normal_squirrel_count >= normal_squirrel_cap) ||
+            (raging && rage_squirrel_count >= rage_squirrel_cap)) {
+            continue;
+        }
+
+        const int spawn_chance = raging ? 45 : 18;
+        if (chance_dist(rng) >= spawn_chance) {
+            continue;
+        }
+
+        add_squirrel(platform, raging);
+
+        if (normal_squirrel_count >= normal_squirrel_cap && rage_squirrel_count >= rage_squirrel_cap) {
             break;
         }
+    }
+
+    for (const Platform* platform : rage_candidates) {
+        if (rage_squirrel_count >= min_rage_squirrels) {
+            break;
+        }
+        add_squirrel(*platform, true);
     }
 }
 
@@ -594,7 +687,13 @@ void DrawDecorativeApples(SDL_Renderer* renderer,
         const int trunk_top = kWindowHeight - 40 - tree.trunk_h;
         const int apple_y = trunk_top + 34 + static_cast<int>((i % 3) * 6);
         const int offsets[3] = { -26, 6, 24 };
+        const float rage_blend = RageBlendForX(static_cast<float>(tree.x));
 
+        SDL_SetTextureColorMod(
+            apple_texture,
+            BlendChannel(255, 165, rage_blend),
+            BlendChannel(255, 56, rage_blend),
+            BlendChannel(255, 70, rage_blend));
         for (int offset : offsets) {
             SDL_Rect dest{
                 screen_x + offset,
@@ -604,6 +703,7 @@ void DrawDecorativeApples(SDL_Renderer* renderer,
             };
             SDL_RenderCopy(renderer, apple_texture, nullptr, &dest);
         }
+        SDL_SetTextureColorMod(apple_texture, 255, 255, 255);
     }
 }
 
@@ -631,6 +731,42 @@ void DrawGroundPhaseBands(SDL_Renderer* renderer, float camera_x) {
         SDL_RenderFillRect(renderer, &phase_ground);
     }
 }
+
+void DrawRagePhaseOverlay(SDL_Renderer* renderer, float camera_x) {
+    const int screen_x = static_cast<int>(static_cast<float>(kRagePhaseStart) - kRageTransitionWidth) - static_cast<int>(camera_x);
+    const int screen_end_x = kLevelWidth - static_cast<int>(camera_x);
+    if (screen_end_x < 0 || screen_x > kWindowWidth) {
+        return;
+    }
+
+    const int left = std::max(0, screen_x);
+    const int right = std::min(kWindowWidth, screen_end_x);
+    if (right <= left) {
+        return;
+    }
+
+    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+    constexpr int strip_width = 48;
+    for (int x = left; x < right; x += strip_width) {
+        const int world_x = x + static_cast<int>(camera_x);
+        const float blend = RageBlendForX(static_cast<float>(world_x));
+        const int width = std::min(strip_width, right - x);
+
+        SDL_SetRenderDrawColor(renderer, 92, 16, 34, static_cast<Uint8>(125.0f * blend));
+        SDL_Rect red_wash{x, 0, width, kWindowHeight};
+        SDL_RenderFillRect(renderer, &red_wash);
+
+        SDL_SetRenderDrawColor(renderer, 34, 6, 16, static_cast<Uint8>(75.0f * blend));
+        SDL_Rect lower_shadow{x, 300, width, 190};
+        SDL_RenderFillRect(renderer, &lower_shadow);
+
+        SDL_SetRenderDrawColor(renderer, 62, 8, 22, static_cast<Uint8>(55.0f * blend));
+        SDL_Rect sky_stain{x, 0, width, 220};
+        SDL_RenderFillRect(renderer, &sky_stain);
+    }
+    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
+}
+
 // Draws cave
 void DrawCavePortal(SDL_Renderer* renderer, const SDL_Rect& portal, float camera_x) {
     // This cave is the visual version of cave_portal_. When the player overlaps
@@ -641,12 +777,14 @@ void DrawCavePortal(SDL_Renderer* renderer, const SDL_Rect& portal, float camera
         return;
     }
 
-    SDL_SetRenderDrawColor(renderer, 44, 38, 42, 255);
+    const float rage_blend = RageBlendForX(static_cast<float>(portal.x));
+
+    SetBlendDrawColor(renderer, 44, 38, 42, 52, 28, 34, rage_blend);
     DrawFilledCircle(renderer, cave.x + cave.w / 2, cave.y + 34, cave.w / 2);
     SDL_Rect rock_base{cave.x, cave.y + 30, cave.w, cave.h - 30};
     SDL_RenderFillRect(renderer, &rock_base);
 
-    SDL_SetRenderDrawColor(renderer, 74, 68, 68, 255);
+    SetBlendDrawColor(renderer, 74, 68, 68, 96, 42, 48, rage_blend);
     DrawFilledCircle(renderer, cave.x + 16, cave.y + 70, 22);
     DrawFilledCircle(renderer, cave.x + cave.w - 18, cave.y + 82, 26);
     DrawFilledCircle(renderer, cave.x + cave.w / 2, cave.y + 18, 20);
@@ -657,8 +795,11 @@ void DrawCavePortal(SDL_Renderer* renderer, const SDL_Rect& portal, float camera
     SDL_RenderFillRect(renderer, &opening);
     DrawFilledCircle(renderer, opening.x + opening.w / 2, opening.y + 2, opening.w / 2);
 
-    SDL_SetRenderDrawColor(renderer, 118, 54, 180, 95);
-    DrawFilledCircle(renderer, opening.x + opening.w / 2, opening.y + opening.h / 2, 24);
+    SetBlendDrawColor(renderer, 118, 54, 180, 216, 34, 64, rage_blend, static_cast<Uint8>(95 + 20 * rage_blend));
+    DrawFilledCircle(renderer, opening.x + opening.w / 2, opening.y + opening.h / 2, static_cast<int>(24 + 6 * rage_blend));
+
+    SDL_SetRenderDrawColor(renderer, 255, 84, 94, static_cast<Uint8>(70 * rage_blend));
+    DrawFilledCircle(renderer, opening.x + opening.w / 2, opening.y + opening.h / 2, 16);
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
 }
 // platforms in boss arena.
@@ -675,6 +816,7 @@ std::vector<Platform> BuildBossArenaPlatforms() {
     platforms.push_back({ SDL_Rect{190, 425, 180, 18} });
     return platforms;
 }
+
 }
 
 bool Game::Init() {
@@ -704,16 +846,27 @@ bool Game::Init() {
         return false;
     }
 
-    fs::path front_path = ResolveAssetsDir() / "arial.ttf";
     fs::path fontPath = ResolveAssetsDir() / "arial.ttf";
     menu_font_ = TTF_OpenFont(fontPath.string().c_str(), 24);
+    if (!menu_font_) {
+        std::cerr << "TTF_OpenFont failed: " << TTF_GetError() << "\n";
+    }
     title_text_ = CreateTextTexture(renderer_, menu_font_, "Angry Panda");
     level1_text_ = CreateTextTexture(renderer_, menu_font_, "LEVEL 1");
     quit_text_ = CreateTextTexture(renderer_, menu_font_, "QUIT");
     pause_text_ = CreateTextTexture(renderer_, menu_font_, "PAUSE");
+    home_text_ = CreateTextTexture(renderer_, menu_font_, "HOME");
+    retry_text_ = CreateTextTexture(renderer_, menu_font_, "RETRY");
+    play_again_text_ = CreateTextTexture(renderer_, menu_font_, "PLAY AGAIN");
+    death_text_ = CreateTextTexture(renderer_, menu_font_, "You got knocked out");
+    win_text_ = CreateTextTexture(renderer_, menu_font_, "You beat the boss!");
+    enter_boss_text_ = CreateTextTexture(renderer_, menu_font_, "Press W or Up to enter");
     in_menu_ = true;
     paused_ = false;
+    level1_button_ = {350, 255, 260, 60};
+    quit_button_ = {350, 350, 260, 60};
     pause_button_ = {(kWindowWidth - 140) / 2, 10, 140, 40};
+    home_button_ = {pause_button_.x, pause_button_.y + pause_button_.h + 8, pause_button_.w, 38};
 
     const fs::path assets_dir = ResolveAssetsDir();
 
@@ -796,12 +949,14 @@ void Game::ResetRun() {
     camera_x_ = 0.0f;
     in_boss_arena_ = false;
     player_damage_cooldown_ = 0.0f;
+    player_damage_flash_timer_ = 0.0f;
     thorn_vine_damage_timer_ = 0.0f;
+    boss_hit_feedback_timer_ = 0.0f;
+    rage_checkpoint_unlocked_ = false;
 
-    // This portal rectangle controls where the player overlaps to enter the
-    // boss arena. The commented line below is the normal end-of-level position.
-    cave_portal_ = SDL_Rect{145,160,112,120}; // comment this out to interact with boss area normally.
-    // cave_portal_ = SDL_Rect{kLevelWidth - 145, kWindowHeight - 160, 112, 120};
+    // The cave belongs at the end of the forest, so the boss fight is a reward
+    // for reaching the far side instead of triggering beside the spawn point.
+    cave_portal_ = SDL_Rect{kLevelWidth - 145, kWindowHeight - 160, 112, 120};
 
     player_.SetGroundY(kWindowHeight - 40.0f);
     player_.ResetForRun(120.0f, kWindowHeight - 80.0f);
@@ -821,6 +976,34 @@ void Game::ResetRun() {
     boss_.Reset(760.0f, kWindowHeight - 40.0f);
 }
 
+void Game::RespawnAtRageCheckpoint() {
+    constexpr float checkpoint_x = static_cast<float>(kRageCheckpointPlatformX + 44);
+    constexpr float checkpoint_y = static_cast<float>(kRageCheckpointPlatformY);
+
+    input_ = InputState{};
+    in_boss_arena_ = false;
+    paused_ = false;
+    platforms_ = forest_platforms_;
+    player_.SetGroundY(kWindowHeight - 40.0f);
+    player_.ResetForRun(checkpoint_x, checkpoint_y);
+    PopulateSquirrels(forest_platforms_, squirrels_, squirrel_textures_, acorn_textures_);
+    boss_.Reset(760.0f, kWindowHeight - 40.0f);
+
+    player_damage_cooldown_ = 0.0f;
+    player_damage_flash_timer_ = 0.0f;
+    thorn_vine_damage_timer_ = 0.0f;
+    boss_hit_feedback_timer_ = 0.0f;
+    has_died_ = false;
+    rage_checkpoint_unlocked_ = true;
+
+    max_x_reached_ = std::max(max_x_reached_, kRagePhaseStart);
+    score_ = max_x_reached_;
+    camera_x_ = checkpoint_x - (kWindowWidth / 2.0f);
+    if (camera_x_ < 0.0f) {
+        camera_x_ = 0.0f;
+    }
+}
+
 void Game::EnterBossArena() {
     // Switch the game from forest mode to boss mode.
     in_boss_arena_ = true;
@@ -829,7 +1012,9 @@ void Game::EnterBossArena() {
     input_ = InputState{};
     camera_x_ = 0.0f;
     player_damage_cooldown_ = 0.0f;
+    player_damage_flash_timer_ = 0.0f;
     thorn_vine_damage_timer_ = 0.0f;
+    boss_hit_feedback_timer_ = 0.0f;
 
     // Replace forest collision with the boss arena layout.
     platforms_ = boss_platforms_;
@@ -869,6 +1054,10 @@ void Game::HandleEvents() {
             {
                 if(SDL_PointInRect(&mouse, &level1_button_))
                 {
+                    last_run_died_ = false;
+                    last_run_won_ = false;
+                    final_score_ = 0;
+                    ResetRun();
                     in_menu_ = false;
                     paused_ = false;
                 }
@@ -882,6 +1071,12 @@ void Game::HandleEvents() {
                     if(SDL_PointInRect(&mouse, &pause_button_))
                     {
                         paused_ = !paused_;
+                    }
+                    else if(paused_ && SDL_PointInRect(&mouse, &home_button_))
+                    {
+                        ResetRun();
+                        in_menu_ = true;
+                        paused_ = false;
                     }
                 }        
         }
@@ -914,6 +1109,9 @@ void Game::Update(float dt) {
             max_x_reached_ = player_.GetX();
             score_ = max_x_reached_;
         }
+        if (player_.GetX() >= static_cast<float>(kRagePhaseStart)) {
+            rage_checkpoint_unlocked_ = true;
+        }
     }
 
     if (in_boss_arena_) {
@@ -924,9 +1122,15 @@ void Game::Update(float dt) {
 
     player_.Update(dt, input_);
     player_.CheckPlatformCollisions(platforms_);
+    if (player_.GetX() >= static_cast<float>(kRagePhaseStart)) {
+        rage_checkpoint_unlocked_ = true;
+    }
 
     if (player_damage_cooldown_ > 0.0f) {
         player_damage_cooldown_ = std::max(0.0f, player_damage_cooldown_ - dt);
+    }
+    if (player_damage_flash_timer_ > 0.0f) {
+        player_damage_flash_timer_ = std::max(0.0f, player_damage_flash_timer_ - dt);
     }
     if (thorn_vine_damage_timer_ > 0.0f) {
         thorn_vine_damage_timer_ = std::max(0.0f, thorn_vine_damage_timer_ - dt);
@@ -935,8 +1139,8 @@ void Game::Update(float dt) {
     SDL_Rect player_rect = player_.GetBodyRect();
     const SDL_Rect attack_rect = player_.GetAttackRect();
 
-    // This is the actual overlap test that sends the player to the boss arena.
-    if (RectsIntersect(player_rect, cave_portal_)) {
+    // The player has to intentionally press up at the cave to enter the boss arena.
+    if (RectsIntersect(player_rect, cave_portal_) && input_.move_up) {
         EnterBossArena();
         return;
     }
@@ -971,6 +1175,7 @@ void Game::Update(float dt) {
         player_.TakeDamage(amount);
         player_.ApplyKnockback(knockback_x, knockback_y);
         player_damage_cooldown_ = kPlayerHitCooldown;
+        player_damage_flash_timer_ = kDamageFlashDuration;
         return true;
     };
 
@@ -987,6 +1192,7 @@ void Game::Update(float dt) {
             player_.TakeDamage(2);
             player_.ApplyKnockback(knockback_x, -220.0f);
             player_damage_cooldown_ = kPlayerHitCooldown;
+            player_damage_flash_timer_ = kDamageFlashDuration;
         }
     }
 
@@ -1007,6 +1213,7 @@ void Game::Update(float dt) {
         if (RectsIntersect(player_rect, vine_hitbox)) {
             if (thorn_vine_damage_timer_ <= 0.0f) {
                 player_.TakeDamage(1);
+                player_damage_flash_timer_ = kDamageFlashDuration;
                 thorn_vine_damage_timer_ = kThornVineDamageInterval;
             }
             break;
@@ -1034,6 +1241,12 @@ void Game::Update(float dt) {
         {
             high_score_ = score_;
         }
+        if (rage_checkpoint_unlocked_) {
+            RespawnAtRageCheckpoint();
+            return;
+        }
+        last_run_died_ = true;
+        last_run_won_ = false;
         ResetRun();
         in_menu_ = true;
         paused_ = false;
@@ -1068,26 +1281,59 @@ void Game::UpdateBossArena(float dt) {
     if (player_damage_cooldown_ > 0.0f) {
         player_damage_cooldown_ = std::max(0.0f, player_damage_cooldown_ - dt);
     }
+    if (player_damage_flash_timer_ > 0.0f) {
+        player_damage_flash_timer_ = std::max(0.0f, player_damage_flash_timer_ - dt);
+    }
+    if (boss_hit_feedback_timer_ > 0.0f) {
+        boss_hit_feedback_timer_ = std::max(0.0f, boss_hit_feedback_timer_ - dt);
+    }
 
     SDL_Rect player_rect = player_.GetBodyRect();
     const SDL_Rect attack_rect = player_.GetAttackRect();
 
     // Update the snake, then let the player's current attack hit it.
     boss_.Update(dt, player_rect);
-    boss_.TryTakeHit(attack_rect);
+    if (boss_.TryTakeHit(attack_rect)) {
+        boss_hit_feedback_timer_ = 0.18f;
+    }
+
+    if (boss_.IsDefeated()) {
+        final_score_ = score_;
+        if(score_ > high_score_)
+        {
+            high_score_ = score_;
+        }
+        last_run_won_ = true;
+        last_run_died_ = false;
+        ResetRun();
+        in_menu_ = true;
+        paused_ = false;
+        return;
+    }
 
     // Contact damage comes from the snake boss during its charging phase.
     float knockback_x = 0.0f;
     if (player_damage_cooldown_ <= 0.0f &&
         boss_.CheckContactHitPlayer(player_rect, &knockback_x)) {
         player_.TakeDamage(2);
-        player_.ApplyKnockback(knockback_x, -230.0f);
+        player_.ApplyKnockback(knockback_x, -190.0f);
         player_damage_cooldown_ = kPlayerHitCooldown;
+        player_damage_flash_timer_ = kDamageFlashDuration;
     }
 
     if (player_.GetHealth() <= 0) {
-        // Death sends the player back to the forest start.
+        if (score_ > high_score_) {
+            high_score_ = score_;
+        }
+        if (rage_checkpoint_unlocked_) {
+            RespawnAtRageCheckpoint();
+            return;
+        }
+        last_run_died_ = true;
+        last_run_won_ = false;
         ResetRun();
+        in_menu_ = true;
+        paused_ = false;
         return;
     }
 
@@ -1108,34 +1354,69 @@ void Game::Render() {
     {
         SDL_SetRenderDrawColor(renderer_, 25, 25, 30, 255);
         SDL_RenderClear(renderer_);
-        SDL_Rect level1 = {350, 200, 260, 60};
-        SDL_Rect quit = {350, 300, 260, 60};
-        SDL_SetRenderDrawColor(renderer_, 0, 180, 0, 255);
+
+        int mouse_x = 0;
+        int mouse_y = 0;
+        SDL_GetMouseState(&mouse_x, &mouse_y);
+        SDL_Point mouse{mouse_x, mouse_y};
+        const bool start_hovered = SDL_PointInRect(&mouse, &level1_button_) == SDL_TRUE;
+        const bool quit_hovered = SDL_PointInRect(&mouse, &quit_button_) == SDL_TRUE;
+
+        SDL_SetRenderDrawColor(renderer_, start_hovered ? 35 : 0, start_hovered ? 205 : 180, 55, 255);
         SDL_RenderFillRect(renderer_, &level1_button_);
+        SDL_SetRenderDrawColor(renderer_, 190, 240, 190, 255);
+        SDL_RenderDrawRect(renderer_, &level1_button_);
+
+        SDL_SetRenderDrawColor(renderer_, quit_hovered ? 225 : 200, 50, 50, 255);
         SDL_RenderFillRect(renderer_, &quit_button_);
-        SDL_SetRenderDrawColor(renderer_, 200, 50, 50, 255);
+        SDL_SetRenderDrawColor(renderer_, 255, 190, 190, 255);
+        SDL_RenderDrawRect(renderer_, &quit_button_);
+
         if(title_text_)
         {
-            SDL_Rect textRect = {320, 80, 320, 80};
-            SDL_RenderCopy(renderer_, title_text_, nullptr, &textRect);  
+            SDL_Rect textRect = {320, 78, 320, 70};
+            SDL_RenderCopy(renderer_, title_text_, nullptr, &textRect);
         }
+
+        SDL_Texture* status_text = nullptr;
+        if (last_run_won_) {
+            status_text = win_text_;
+        } else if (last_run_died_) {
+            status_text = death_text_;
+        }
+        if(status_text)
+        {
+            SDL_Rect statusRect = {315, 158, 330, 28};
+            SDL_RenderCopy(renderer_, status_text, nullptr, &statusRect);
+        }
+
         std::string hsText = "High Score: " + std::to_string(high_score_);
+        if (last_run_won_) {
+            hsText = "Final Score: " + std::to_string(final_score_) + "  High: " + std::to_string(high_score_);
+        }
         SDL_Texture* hs_tex = CreateTextTexture(renderer_, menu_font_, hsText);
         if(hs_tex)
         {
-            SDL_Rect hsRect = {360, 160, 240, 40};
+            SDL_Rect hsRect = {last_run_won_ ? 300 : 360, 202, last_run_won_ ? 360 : 240, 32};
             SDL_RenderCopy(renderer_, hs_tex, nullptr, &hsRect);
             SDL_DestroyTexture(hs_tex);
         }
-        if(level1_text_)
+
+        SDL_Texture* start_text = level1_text_;
+        if (last_run_won_ && play_again_text_) {
+            start_text = play_again_text_;
+        } else if (last_run_died_ && retry_text_) {
+            start_text = retry_text_;
+        }
+        if(start_text)
         {
-            SDL_Rect textRect = {level1.x + 60, level1.y + 15, 150, 30};
-            SDL_RenderCopy(renderer_, level1_text_, NULL, &textRect);
+            SDL_Rect textRect = {level1_button_.x + 35, level1_button_.y + 15, level1_button_.w - 70, 30};
+            SDL_RenderCopy(renderer_, start_text, nullptr, &textRect);
         }
         if(quit_text_)
         {
-            SDL_Rect textRect = {quit.x + 90, quit.y + 15, 100, 30};
-            SDL_RenderCopy(renderer_, quit_text_, NULL, &textRect);
+            SDL_Rect textRect = {quit_button_.x + 80, quit_button_.y + 15, 100, 30};
+            SDL_RenderCopy(renderer_, quit_text_, nullptr, &textRect);
         }
         SDL_RenderPresent(renderer_);
         return;
@@ -1162,6 +1443,8 @@ void Game::Render() {
         SDL_RenderFillRect(renderer_, &sky_band_2);
     }
 
+    DrawRagePhaseOverlay(renderer_, camera_x_);
+
     const std::vector<TreeVisual>& trees = cached_tree_visuals;
 
     for (const TreeVisual& tree : trees) {
@@ -1170,7 +1453,10 @@ void Game::Render() {
             continue;
         }
 
-        SDL_SetRenderDrawColor(renderer_, 55, 85, 55, 255);
+        const int apparent_world_x = static_cast<int>(tree.x + camera_x_ * 0.45f);
+        const float rage_blend = RageBlendForX(static_cast<float>(apparent_world_x));
+
+        SetBlendDrawColor(renderer_, 55, 85, 55, 58, 44, 48, rage_blend);
         SDL_Rect trunk{
             screen_x - 16,
             kWindowHeight - 40 - tree.trunk_h + 40,
@@ -1179,12 +1465,12 @@ void Game::Render() {
         };
         SDL_RenderFillRect(renderer_, &trunk);
 
-        SDL_SetRenderDrawColor(renderer_, 62, 104, 60, 255);
+        SetBlendDrawColor(renderer_, 62, 104, 60, 76, 40, 50, rage_blend);
         DrawFilledCircle(renderer_, screen_x, trunk.y + 22, 44);
         DrawFilledCircle(renderer_, screen_x - 34, trunk.y + 46, 30);
         DrawFilledCircle(renderer_, screen_x + 34, trunk.y + 46, 30);
 
-        SDL_SetRenderDrawColor(renderer_, 78, 126, 74, 255);
+        SetBlendDrawColor(renderer_, 78, 126, 74, 112, 48, 58, rage_blend);
         DrawFilledCircle(renderer_, screen_x - 10, trunk.y + 28, 22);
         DrawFilledCircle(renderer_, screen_x + 16, trunk.y + 30, 18);
     }
@@ -1200,6 +1486,7 @@ void Game::Render() {
         if (!TreeOnScreen(screen_x, 180)) {
             continue;
         }
+        const float rage_blend = RageBlendForX(static_cast<float>(tree.x));
 
         SDL_Rect trunk{
             screen_x - tree.trunk_w / 2,
@@ -1208,10 +1495,10 @@ void Game::Render() {
             tree.trunk_h
         };
 
-        SDL_SetRenderDrawColor(renderer_, 92, 58, 34, 255);
+        SetBlendDrawColor(renderer_, 92, 58, 34, 74, 40, 38, rage_blend);
         SDL_RenderFillRect(renderer_, &trunk);
 
-        SDL_SetRenderDrawColor(renderer_, 120, 78, 46, 255);
+        SetBlendDrawColor(renderer_, 120, 78, 46, 126, 56, 52, rage_blend);
         SDL_Rect trunk_highlight{
             trunk.x + trunk.w / 3,
             trunk.y,
@@ -1220,39 +1507,39 @@ void Game::Render() {
         };
         SDL_RenderFillRect(renderer_, &trunk_highlight);
 
-        SDL_SetRenderDrawColor(renderer_, 70, 42, 24, 255);
+        SetBlendDrawColor(renderer_, 70, 42, 24, 48, 22, 25, rage_blend);
         for (int i = 4; i < trunk.h; i += 22) {
             SDL_RenderDrawLine(renderer_, trunk.x + 4, trunk.y + i, trunk.x + trunk.w - 4, trunk.y + i + 3);
         }
 
-        SDL_SetRenderDrawColor(renderer_, 80, 50, 28, 255);
+        SetBlendDrawColor(renderer_, 80, 50, 28, 62, 28, 30, rage_blend);
         SDL_RenderDrawLine(renderer_, trunk.x + 4, trunk.y + trunk.h, trunk.x - 10, trunk.y + trunk.h + 10);
         SDL_RenderDrawLine(renderer_, trunk.x + trunk.w - 4, trunk.y + trunk.h, trunk.x + trunk.w + 10, trunk.y + trunk.h + 10);
         SDL_RenderDrawLine(renderer_, trunk.x + trunk.w / 2, trunk.y + trunk.h, trunk.x + trunk.w / 2 - 8, trunk.y + trunk.h + 12);
 
-        SDL_SetRenderDrawColor(renderer_, 88, 54, 30, 255);
+        SetBlendDrawColor(renderer_, 88, 54, 30, 82, 34, 36, rage_blend);
         SDL_RenderDrawLine(renderer_, trunk.x, trunk.y + trunk.h / 3, trunk.x - 16, trunk.y + trunk.h / 3 - 8);
         SDL_RenderDrawLine(renderer_, trunk.x + trunk.w, trunk.y + trunk.h / 2, trunk.x + trunk.w + 16, trunk.y + trunk.h / 2 - 6);
 
-        SDL_SetRenderDrawColor(renderer_, 34, 102, 40, 255);
+        SetBlendDrawColor(renderer_, 34, 102, 40, 72, 30, 44, rage_blend);
         DrawFilledCircle(renderer_, screen_x, trunk.y + 4, 50);
         DrawFilledCircle(renderer_, screen_x - 42, trunk.y + 34, 38);
         DrawFilledCircle(renderer_, screen_x + 42, trunk.y + 30, 38);
         DrawFilledCircle(renderer_, screen_x - 18, trunk.y + 58, 34);
         DrawFilledCircle(renderer_, screen_x + 18, trunk.y + 56, 34);
 
-        SDL_SetRenderDrawColor(renderer_, 48, 128, 52, 255);
+        SetBlendDrawColor(renderer_, 48, 128, 52, 104, 40, 56, rage_blend);
         DrawFilledCircle(renderer_, screen_x, trunk.y + 12, 42);
         DrawFilledCircle(renderer_, screen_x - 34, trunk.y + 32, 34);
         DrawFilledCircle(renderer_, screen_x + 34, trunk.y + 30, 34);
         DrawFilledCircle(renderer_, screen_x, trunk.y + 52, 32);
 
-        SDL_SetRenderDrawColor(renderer_, 72, 162, 74, 255);
+        SetBlendDrawColor(renderer_, 72, 162, 74, 156, 62, 70, rage_blend);
         DrawFilledCircle(renderer_, screen_x - 14, trunk.y + 16, 20);
         DrawFilledCircle(renderer_, screen_x + 22, trunk.y + 22, 18);
         DrawFilledCircle(renderer_, screen_x - 28, trunk.y + 42, 16);
 
-        SDL_SetRenderDrawColor(renderer_, 26, 92, 34, 255);
+        SetBlendDrawColor(renderer_, 26, 92, 34, 136, 38, 56, rage_blend);
         SDL_RenderDrawLine(renderer_, screen_x - 24, trunk.y + 48, screen_x - 28, trunk.y + 92);
         SDL_RenderDrawLine(renderer_, screen_x + 18, trunk.y + 44, screen_x + 22, trunk.y + 84);
     }
@@ -1270,15 +1557,16 @@ void Game::Render() {
         if (!RectOnScreen(rect, 24)) {
             continue;
         }
+        const float rage_blend = RageBlendForX(static_cast<float>(vine.rect.x));
 
-        SDL_SetRenderDrawColor(renderer_, 34, 120, 44, 255);
+        SetBlendDrawColor(renderer_, 34, 120, 44, 92, 30, 48, rage_blend);
         SDL_RenderFillRect(renderer_, &rect);
 
-        SDL_SetRenderDrawColor(renderer_, 58, 160, 62, 255);
+        SetBlendDrawColor(renderer_, 58, 160, 62, 156, 42, 68, rage_blend);
         SDL_Rect highlight{ rect.x + 2, rect.y, 2, rect.h };
         SDL_RenderFillRect(renderer_, &highlight);
 
-        SDL_SetRenderDrawColor(renderer_, 48, 145, 52, 255);
+        SetBlendDrawColor(renderer_, 48, 145, 52, 176, 52, 78, rage_blend);
         for (int y = rect.y + 10; y < rect.y + rect.h - 8; y += 18) {
             SDL_RenderDrawLine(renderer_, rect.x + 2, y, rect.x - 6, y + 4);
             SDL_RenderDrawLine(renderer_, rect.x + 3, y + 2, rect.x + 9, y + 6);
@@ -1291,15 +1579,16 @@ void Game::Render() {
         if (!RectOnScreen(rect, 24)) {
             continue;
         }
+        const float rage_blend = RageBlendForX(static_cast<float>(vine.rect.x));
 
-        SDL_SetRenderDrawColor(renderer_, 122, 28, 74, 255);
+        SetBlendDrawColor(renderer_, 122, 28, 74, 150, 18, 44, rage_blend);
         SDL_RenderFillRect(renderer_, &rect);
 
-        SDL_SetRenderDrawColor(renderer_, 206, 52, 98, 255);
+        SetBlendDrawColor(renderer_, 206, 52, 98, 238, 40, 68, rage_blend);
         SDL_Rect glow{rect.x + 2, rect.y, 3, rect.h};
         SDL_RenderFillRect(renderer_, &glow);
 
-        SDL_SetRenderDrawColor(renderer_, 245, 222, 118, 255);
+        SetBlendDrawColor(renderer_, 245, 222, 118, 255, 178, 132, rage_blend);
         for (int y = rect.y + 12; y < rect.y + rect.h - 8; y += 16) {
             SDL_RenderDrawLine(renderer_, rect.x + 1, y, rect.x - 8, y + 5);
             SDL_RenderDrawLine(renderer_, rect.x + rect.w - 1, y + 4, rect.x + rect.w + 8, y + 9);
@@ -1316,16 +1605,17 @@ void Game::Render() {
         if (!RectOnScreen(screen_rect, 40)) {
             continue;
         }
+        const float rage_blend = RageBlendForX(static_cast<float>(platform.rect.x));
 
-        SDL_SetRenderDrawColor(renderer_, 110, 72, 42, 255);
+        SetBlendDrawColor(renderer_, 110, 72, 42, 82, 42, 40, rage_blend);
         SDL_RenderFillRect(renderer_, &screen_rect);
 
-        SDL_SetRenderDrawColor(renderer_, 138, 94, 58, 255);
+        SetBlendDrawColor(renderer_, 138, 94, 58, 132, 52, 52, rage_blend);
         SDL_Rect top_bark = screen_rect;
         top_bark.h = 5;
         SDL_RenderFillRect(renderer_, &top_bark);
 
-        SDL_SetRenderDrawColor(renderer_, 42, 120, 45, 255);
+        SetBlendDrawColor(renderer_, 42, 120, 45, 116, 28, 50, rage_blend);
         SDL_Rect moss{
             screen_rect.x + 8,
             screen_rect.y - 6,
@@ -1334,7 +1624,7 @@ void Game::Render() {
         };
         SDL_RenderFillRect(renderer_, &moss);
 
-        SDL_SetRenderDrawColor(renderer_, 58, 150, 58, 255);
+        SetBlendDrawColor(renderer_, 58, 150, 58, 196, 58, 76, rage_blend);
         for (int gx = screen_rect.x + 10; gx < screen_rect.x + screen_rect.w - 10; gx += 12) {
             SDL_RenderDrawLine(renderer_, gx, screen_rect.y, gx + 2, screen_rect.y - 5);
             SDL_RenderDrawLine(renderer_, gx + 4, screen_rect.y, gx + 5, screen_rect.y - 6);
@@ -1348,6 +1638,7 @@ void Game::Render() {
         if (!RectOnScreen(rect, 80)) {
             continue;
         }
+        const float rage_blend = RageBlendForX(static_cast<float>(gas.rect.x));
 
         for (int i = 0; i < 70; ++i) {
             const int seed = gas.rect.x * 97 + gas.rect.y * 53 + i * 131;
@@ -1357,16 +1648,16 @@ void Game::Render() {
             const Uint8 alpha = static_cast<Uint8>(58 + std::abs(seed * 7) % 92);
 
             if (i % 5 == 0) {
-                SDL_SetRenderDrawColor(renderer_, 232, 176, 255, static_cast<Uint8>(alpha + 30));
+                SetBlendDrawColor(renderer_, 232, 176, 255, 255, 144, 150, rage_blend, static_cast<Uint8>(alpha + 30));
             } else if (i % 3 == 0) {
-                SDL_SetRenderDrawColor(renderer_, 188, 86, 236, alpha);
+                SetBlendDrawColor(renderer_, 188, 86, 236, 220, 54, 82, rage_blend, alpha);
             } else {
-                SDL_SetRenderDrawColor(renderer_, 130, 44, 190, alpha);
+                SetBlendDrawColor(renderer_, 130, 44, 190, 144, 28, 70, rage_blend, alpha);
             }
             DrawFilledCircle(renderer_, dot_x, dot_y, radius);
         }
 
-        SDL_SetRenderDrawColor(renderer_, 105, 36, 150, 70);
+        SetBlendDrawColor(renderer_, 105, 36, 150, 168, 30, 58, rage_blend, static_cast<Uint8>(70 + 16 * rage_blend));
         for (int i = 0; i < 5; ++i) {
             const int seed = gas.rect.x * 41 + i * 89;
             const int x0 = rect.x + 10 + (std::abs(seed) % std::max(1, rect.w - 20));
@@ -1398,22 +1689,48 @@ void Game::Render() {
 
     // Draw the cave portal at the same rectangle used by the overlap test.
     DrawCavePortal(renderer_, cave_portal_, camera_x_);
+    if(enter_boss_text_)
+    {
+        SDL_Rect portal_screen = cave_portal_;
+        portal_screen.x -= static_cast<int>(camera_x_);
+        if (RectOnScreen(portal_screen, 80)) {
+            SDL_Rect promptPanel = {portal_screen.x - 84, portal_screen.y - 42, 280, 38};
+            SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_BLEND);
+            SDL_SetRenderDrawColor(renderer_, 22, 12, 24, 205);
+            SDL_RenderFillRect(renderer_, &promptPanel);
+            SDL_SetRenderDrawColor(renderer_, 218, 56, 82, 220);
+            SDL_RenderDrawRect(renderer_, &promptPanel);
 
-    player_.Render(renderer_, camera_x_);
+            SDL_SetRenderDrawColor(renderer_, 255, 92, 110, 90);
+            SDL_Rect promptGlow = {promptPanel.x + 6, promptPanel.y + promptPanel.h - 5, promptPanel.w - 12, 3};
+            SDL_RenderFillRect(renderer_, &promptGlow);
+            SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_NONE);
+
+            SDL_SetTextureColorMod(enter_boss_text_, 255, 214, 214);
+            SDL_Rect promptRect = {promptPanel.x + 18, promptPanel.y + 8, promptPanel.w - 36, 22};
+            SDL_RenderCopy(renderer_, enter_boss_text_, nullptr, &promptRect);
+            SDL_SetTextureColorMod(enter_boss_text_, 255, 255, 255);
+        }
+    }
+
+    player_.Render(renderer_, camera_x_, player_damage_flash_timer_ > 0.0f);
 
     for (int i = 0; i < player_.GetMaxHealth() / 2; ++i) {
         const int fill_units = std::clamp(player_.GetHealth() - i * 2, 0, 2);
         DrawHeart(renderer_, 20 + i * 36, 20, 4, fill_units);
     }
 
-    SDL_Color white = {255, 255, 255, 255};
     std::string scoreText = "Score: " + std::to_string(score_);
     SDL_Texture* scoreTex = CreateTextTexture(renderer_, menu_font_, scoreText);
     SDL_Rect rect = {20, 60, 160, 30};
     SDL_RenderCopy(renderer_, scoreTex, nullptr, &rect);
     SDL_DestroyTexture(scoreTex);
-    SDL_SetRenderDrawColor(renderer_, 200, 50, 50, 225);
+    SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_BLEND);
+    SDL_SetRenderDrawColor(renderer_, 32, 38, 42, 210);
     SDL_RenderFillRect(renderer_, &pause_button_);
+    SDL_SetRenderDrawColor(renderer_, 210, 230, 210, 190);
+    SDL_RenderDrawRect(renderer_, &pause_button_);
+    SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_NONE);
     if(pause_text_)
     {
         SDL_Rect textRect = {pause_button_.x + 20, pause_button_.y + 10, pause_button_.w - 40, pause_button_.h - 20}; 
@@ -1426,12 +1743,39 @@ void Game::Render() {
         SDL_SetRenderDrawColor(renderer_, 0, 0, 0, 150);
         SDL_Rect overlay = {0, 0, kWindowWidth, kWindowHeight};
         SDL_RenderFillRect(renderer_, &overlay);
-        SDL_SetRenderDrawColor(renderer_, 200, 50, 50, 225);
+        SDL_SetRenderDrawColor(renderer_, 42, 48, 52, 235);
         SDL_RenderFillRect(renderer_, &pause_button_);
+        SDL_SetRenderDrawColor(renderer_, 210, 230, 210, 210);
+        SDL_RenderDrawRect(renderer_, &pause_button_);
         if(pause_text_)
         {
             SDL_Rect textRect = {pause_button_.x + 20, pause_button_.y + 10, pause_button_.w - 40, pause_button_.h - 20};
             SDL_RenderCopy(renderer_, pause_text_, nullptr, &textRect);
+        }
+
+        int mouse_x = 0;
+        int mouse_y = 0;
+        SDL_GetMouseState(&mouse_x, &mouse_y);
+        SDL_Point mouse{mouse_x, mouse_y};
+        const bool home_hovered = SDL_PointInRect(&mouse, &home_button_) == SDL_TRUE;
+
+        SDL_SetRenderDrawColor(renderer_, 34, 34, 42, 235);
+        SDL_Rect dropdown = {
+            home_button_.x - 8,
+            pause_button_.y + pause_button_.h,
+            home_button_.w + 16,
+            home_button_.h + 16
+        };
+        SDL_RenderFillRect(renderer_, &dropdown);
+
+        SDL_SetRenderDrawColor(renderer_, home_hovered ? 72 : 48, home_hovered ? 125 : 92, home_hovered ? 76 : 58, 255);
+        SDL_RenderFillRect(renderer_, &home_button_);
+        SDL_SetRenderDrawColor(renderer_, 190, 225, 190, 230);
+        SDL_RenderDrawRect(renderer_, &home_button_);
+        if(home_text_)
+        {
+            SDL_Rect textRect = {home_button_.x + 28, home_button_.y + 8, home_button_.w - 56, home_button_.h - 16};
+            SDL_RenderCopy(renderer_, home_text_, nullptr, &textRect);
         }
     }
     SDL_RenderPresent(renderer_);
@@ -1482,7 +1826,7 @@ void Game::RenderBossArena() {
 
     // Boss and player are drawn after the arena so they appear in front.
     boss_.Render(renderer_, camera_x_);
-    player_.Render(renderer_, camera_x_);
+    player_.Render(renderer_, camera_x_, player_damage_flash_timer_ > 0.0f);
 
     for (int i = 0; i < player_.GetMaxHealth() / 2; ++i) {
         const int fill_units = std::clamp(player_.GetHealth() - i * 2, 0, 2);
@@ -1490,16 +1834,28 @@ void Game::RenderBossArena() {
     }
 
     // Boss health bar across the top of the arena.
-    SDL_SetRenderDrawColor(renderer_, 38, 24, 56, 255);
+    if (boss_hit_feedback_timer_ > 0.0f) {
+        SDL_SetRenderDrawColor(renderer_, 88, 40, 92, 255);
+    } else {
+        SDL_SetRenderDrawColor(renderer_, 38, 24, 56, 255);
+    }
     SDL_Rect boss_bar_back{250, 24, 460, 18};
     SDL_RenderFillRect(renderer_, &boss_bar_back);
     if (!boss_.IsDefeated()) {
         const int fill_w = (boss_bar_back.w * boss_.GetHealth()) / boss_.GetMaxHealth();
-        SDL_SetRenderDrawColor(renderer_, 176, 42, 214, 255);
+        if (boss_hit_feedback_timer_ > 0.0f) {
+            SDL_SetRenderDrawColor(renderer_, 255, 116, 230, 255);
+        } else {
+            SDL_SetRenderDrawColor(renderer_, 176, 42, 214, 255);
+        }
         SDL_Rect boss_bar_fill{boss_bar_back.x, boss_bar_back.y, fill_w, boss_bar_back.h};
         SDL_RenderFillRect(renderer_, &boss_bar_fill);
     }
-    SDL_SetRenderDrawColor(renderer_, 120, 84, 150, 255);
+    if (boss_hit_feedback_timer_ > 0.0f) {
+        SDL_SetRenderDrawColor(renderer_, 255, 220, 255, 255);
+    } else {
+        SDL_SetRenderDrawColor(renderer_, 120, 84, 150, 255);
+    }
     SDL_RenderDrawRect(renderer_, &boss_bar_back);
 
     SDL_RenderPresent(renderer_);
@@ -1535,6 +1891,13 @@ void Game::Shutdown() {
     if(level1_text_) SDL_DestroyTexture(level1_text_);
     if(quit_text_) SDL_DestroyTexture(quit_text_);
     if(pause_text_) SDL_DestroyTexture(pause_text_);
+    if(home_text_) SDL_DestroyTexture(home_text_);
+    if(retry_text_) SDL_DestroyTexture(retry_text_);
+    if(play_again_text_) SDL_DestroyTexture(play_again_text_);
+    if(death_text_) SDL_DestroyTexture(death_text_);
+    if(win_text_) SDL_DestroyTexture(win_text_);
+    if(enter_boss_text_) SDL_DestroyTexture(enter_boss_text_);
+    if(title_text_) SDL_DestroyTexture(title_text_);
     if(menu_font_) TTF_CloseFont(menu_font_);
     TTF_Quit();
 

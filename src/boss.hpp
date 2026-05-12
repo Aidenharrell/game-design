@@ -90,8 +90,8 @@ private:
     // Speed used while the head chases the player.
     float chase_speed_ = 0.0f;
 
-    int health_ = 14;
-    int max_health_ = 30;
+    int health_ = 12;
+    int max_health_ = 12;
 
     // Disabled while the snake is leaving the screen.
     bool active_hitbox_ = true;

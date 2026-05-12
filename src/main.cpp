@@ -11,6 +11,8 @@ struct LoopingAudio {
     Uint8* data = nullptr;
     Uint32 length = 0;
     Uint32 position = 0;
+    SDL_AudioFormat format = AUDIO_S16LSB;
+    int volume = SDL_MIX_MAXVOLUME / 4;
 };
 
 fs::path ResolveRainPath() {
@@ -57,9 +59,9 @@ void AudioCallback(void* userdata, Uint8* stream, int len) {
 
         SDL_MixAudioFormat(stream + mixed,
                            audio->data + audio->position,
-                           AUDIO_S16LSB,
+                           audio->format,
                            static_cast<Uint32>(chunk),
-                           SDL_MIX_MAXVOLUME);
+                           audio->volume);
         audio->position += static_cast<Uint32>(chunk);
         mixed += chunk;
     }
@@ -108,6 +110,8 @@ bool LoadLoopingRain(LoopingAudio* audio, SDL_AudioSpec* device_spec) {
     audio->data = cvt.buf;
     audio->length = static_cast<Uint32>(cvt.len_cvt);
     audio->position = 0;
+    audio->format = device_spec->format;
+    audio->volume = SDL_MIX_MAXVOLUME / 4;
     return true;
 }
 }
@@ -126,7 +130,7 @@ int main(int argc, char** argv) {
         desired.freq = 44100;
         desired.format = AUDIO_S16LSB;
         desired.channels = 2;
-        desired.samples = 2048;
+        desired.samples = 4096;
         desired.callback = AudioCallback;
         desired.userdata = &rain_audio;
 

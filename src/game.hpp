@@ -36,6 +36,7 @@ private:
     void Update(float dt);
     void Render();
     void ResetRun();
+    void RespawnAtRageCheckpoint();
 
     // Boss arena helpers. The main Update/Render functions hand off to these
     // after the player enters the cave portal.
@@ -84,20 +85,33 @@ private:
     SDL_Texture* level1_text_ = nullptr;
     SDL_Texture* quit_text_ = nullptr;
     SDL_Texture* pause_text_ = nullptr;
+    SDL_Texture* home_text_ = nullptr;
+    SDL_Texture* retry_text_ = nullptr;
+    SDL_Texture* play_again_text_ = nullptr;
+    SDL_Texture* death_text_ = nullptr;
+    SDL_Texture* win_text_ = nullptr;
+    SDL_Texture* enter_boss_text_ = nullptr;
     SDL_Rect level1_button_ = {350, 200, 260, 60};
     SDL_Rect quit_button_ = {350, 300, 260, 60};
     SDL_Rect pause_button_ = {350, 220, 260, 80};
+    SDL_Rect home_button_ = {0, 0, 0, 0};
     int score_ = 0;
     int max_x_reached_ = 0;
     SDL_Texture* title_text_ = nullptr;
     bool has_died_ = false;
+    bool last_run_died_ = false;
+    bool last_run_won_ = false;
     int high_score_ = 0;
+    int final_score_ = 0;
+    bool rage_checkpoint_unlocked_ = false;
 
     // Chooses whether Update/Render use the forest level or boss arena.
     bool in_boss_arena_ = false;
     float camera_x_ = 0.0f;
     float player_damage_cooldown_ = 0.0f;
+    float player_damage_flash_timer_ = 0.0f;
     float thorn_vine_damage_timer_ = 0.0f;
+    float boss_hit_feedback_timer_ = 0.0f;
 
     InputState input_{};
     Player player_{};

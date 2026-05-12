@@ -65,6 +65,7 @@ void Player::Heal(int amount) {
 void Player::ResetForRun(float x, float y) {
     x_ = x;
     y_ = y;
+    previous_y_ = y;
     vx_ = 0.0f;
     vy_ = 0.0f;
     on_ground_ = false;
@@ -124,13 +125,15 @@ void Player::CheckPlatformCollisions(const std::vector<Platform>& platforms) {
     on_ground_ = false;
 
     SDL_Rect playerRect = GetBodyRect();
+    const float previous_bottom = previous_y_;
+    const float current_bottom = y_;
 
     for (const auto& platform : platforms) {
         SDL_Rect p = platform.rect;
 
         if (vy_ >= 0 &&
-            playerRect.y + playerRect.h <= p.y + 10 &&
-            playerRect.y + playerRect.h >= p.y &&
+            previous_bottom <= static_cast<float>(p.y) + 8.0f &&
+            current_bottom >= static_cast<float>(p.y) &&
             playerRect.x + playerRect.w > p.x &&
             playerRect.x < p.x + p.w) {
             y_ = static_cast<float>(p.y);
@@ -141,6 +144,8 @@ void Player::CheckPlatformCollisions(const std::vector<Platform>& platforms) {
 }
 
 void Player::Update(float dt, const InputState& input) {
+    previous_y_ = y_;
+
     float move = 0.0f;
     if (input.move_left) move -= 1.0f;
     if (input.move_right) move += 1.0f;
@@ -244,7 +249,7 @@ void Player::Update(float dt, const InputState& input) {
     }
 }
 
-void Player::Render(SDL_Renderer* renderer, float camera_x) const {
+void Player::Render(SDL_Renderer* renderer, float camera_x, bool damage_flash) const {
     int draw_w = base_texture_.width;
     int draw_h = base_texture_.height;
     if (draw_w <= 0) draw_w = 48;
@@ -281,9 +286,19 @@ void Player::Render(SDL_Renderer* renderer, float camera_x) const {
     };
     if (render_texture) {
         const SDL_RendererFlip flip = facing_left_ ? SDL_FLIP_HORIZONTAL : SDL_FLIP_NONE;
+        if (damage_flash) {
+            SDL_SetTextureColorMod(render_texture, 255, 155, 155);
+        }
         SDL_RenderCopyEx(renderer, render_texture, nullptr, &body, 0.0, nullptr, flip);
+        if (damage_flash) {
+            SDL_SetTextureColorMod(render_texture, 255, 255, 255);
+        }
     } else {
-        SDL_SetRenderDrawColor(renderer, 220, 220, 220, 255);
+        if (damage_flash) {
+            SDL_SetRenderDrawColor(renderer, 255, 155, 155, 255);
+        } else {
+            SDL_SetRenderDrawColor(renderer, 220, 220, 220, 255);
+        }
         SDL_RenderFillRect(renderer, &body);
     }
 }

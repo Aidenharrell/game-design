@@ -7,7 +7,7 @@
 
 class Player {
 public:
-    void SetPosition(float x, float y) { x_ = x; y_ = y; }
+    void SetPosition(float x, float y) { x_ = x; y_ = y; previous_y_ = y; }
     void SetGroundY(float y) { ground_y_ = y; }
     float GetX() const { return x_; }
     float GetY() const { return y_; }
@@ -24,7 +24,7 @@ public:
     void CheckPlatformCollisions(const std::vector<Platform>& platforms);
 
     void Update(float dt, const InputState& input);
-    void Render(SDL_Renderer* renderer, float camera_x) const;
+    void Render(SDL_Renderer* renderer, float camera_x, bool damage_flash = false) const;
     SDL_Rect GetBodyRect() const;
     SDL_Rect GetAttackRect() const;
     void ApplyKnockback(float vx, float vy);
@@ -40,13 +40,14 @@ public:
 private:
     float x_ = 0.0f;
     float y_ = 0.0f;
+    float previous_y_ = 0.0f;
     float vx_ = 0.0f;
     float vy_ = 0.0f;
     float ground_y_ = 0.0f;
     bool on_ground_ = false;
 
-    int health_ = 6;
-    int max_health_ = 6;
+    int health_ = 10;
+    int max_health_ = 10;
 
     float punch_timer_ = 0.0f;
     float punch_frame_time_ = 0.0f;

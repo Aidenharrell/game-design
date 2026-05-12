@@ -15,10 +15,10 @@ constexpr int kFallbackTailSize = 42;
 
 // Tunable values for the snake's spacing, attack timing, movement, and damage cooldown.
 constexpr float kSegmentSpacing = 34.0f;
-constexpr float kLoadDuration = 5.0f;
-constexpr float kChargeDuration = 3.6f;
+constexpr float kLoadDuration = 4.8f;
+constexpr float kChargeDuration = 2.9f;
 constexpr float kLeaveDuration = 1.1f;
-constexpr float kChargeSpeed = 200.0f;
+constexpr float kChargeSpeed = 178.0f;
 constexpr float kLeaveSpeed = 520.0f;
 constexpr float kHurtCooldown = 0.5f;
 constexpr float kPi = 3.1415926535f;
@@ -260,19 +260,19 @@ bool AbyssBoss::CheckContactHitPlayer(const SDL_Rect& player_rect, float* out_kn
     const int body_h = body_texture_.height > 0 ? body_texture_.height : kFallbackBodySize;
 
     // Only the front half hurts the player; the tail dragging behind is safer.
-    const std::size_t damaging_segments = std::min<std::size_t>(segments_.size(), 5);
+    const std::size_t damaging_segments = std::min<std::size_t>(segments_.size(), 4);
     for (std::size_t i = 0; i < damaging_segments; ++i) {
         SDL_Rect hitbox = GetSegmentRect(segments_[i], i == 0 ? head_w : body_w, i == 0 ? head_h : body_h);
-        hitbox.x += 8;
-        hitbox.y += 8;
-        hitbox.w -= 16;
-        hitbox.h -= 16;
+        hitbox.x += 11;
+        hitbox.y += 11;
+        hitbox.w -= 22;
+        hitbox.h -= 22;
 
         if (SDL_HasIntersection(&hitbox, &player_rect) == SDL_TRUE) {
             if (out_knockback_x) {
                 // Push the player away from the segment that hit them.
                 const int player_center = player_rect.x + player_rect.w / 2;
-                *out_knockback_x = player_center < static_cast<int>(segments_[i].x) ? -220.0f : 220.0f;
+                *out_knockback_x = player_center < static_cast<int>(segments_[i].x) ? -180.0f : 180.0f;
             }
             return true;
         }
